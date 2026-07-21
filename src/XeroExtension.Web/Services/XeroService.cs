@@ -48,6 +48,36 @@ public class XeroService : IXeroService
         return response?._Accounts ?? [];
     }
 
+    public async Task<Guid> EnsureContactGroupAsync(string tenantId, string groupName)
+    {
+        var token = await GetValidTokenAsync();
+
+        var existing = await _accountingApi.GetContactGroupsAsync(token.AccessToken, tenantId);
+        var existingGroup = existing?._ContactGroups?.FirstOrDefault(g => g.Name == groupName);
+        if (existingGroup?.ContactGroupID is { } existingId)
+            return existingId;
+
+        var created = await _accountingApi.CreateContactGroupAsync(token.AccessToken, tenantId,
+            new ContactGroups { _ContactGroups = [new ContactGroup { Name = groupName }] });
+        return created._ContactGroups![0].ContactGroupID!.Value;
+    }
+
+    public async Task ReplaceContactGroupMembersAsync(string tenantId, Guid contactGroupId, IReadOnlyCollection<string> contactIds)
+    {
+        var token = await GetValidTokenAsync();
+
+        await _accountingApi.DeleteContactGroupContactsAsync(token.AccessToken, tenantId, contactGroupId);
+
+        if (contactIds.Count == 0)
+            return;
+
+        var contacts = new Contacts
+        {
+            _Contacts = contactIds.Select(id => new Contact { ContactID = Guid.Parse(id) }).ToList()
+        };
+        await _accountingApi.CreateContactGroupContactsAsync(token.AccessToken, tenantId, contactGroupId, contacts);
+    }
+
     private async Task<XeroTokenSet> GetValidTokenAsync()
     {
         var tokenSet = await _tokenStore.GetAsync(UserId)

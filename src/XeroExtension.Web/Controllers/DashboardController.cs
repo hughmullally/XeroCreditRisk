@@ -1,0 +1,69 @@
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using XeroExtension.Web.Services;
+
+namespace XeroExtension.Web.Controllers;
+
+[Route("dashboard")]
+public class DashboardController : ControllerBase
+{
+    private readonly ICreditRiskService _creditRiskService;
+
+    public DashboardController(ICreditRiskService creditRiskService) => _creditRiskService = creditRiskService;
+
+    /// <summary>GET /dashboard?tenantId={id} — credit risk table with deep links into Xero contact records.</summary>
+    [HttpGet]
+    public async Task<ContentResult> Index([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return Content("<p>Missing required query parameter: tenantId</p>", "text/html");
+
+        var risk = await _creditRiskService.GetContactRiskAsync(tenantId);
+
+        var rows = string.Join("\n", risk.Select(r => $"""
+            <tr>
+              <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
+              <td>{r.OverdueInvoiceCount}</td>
+              <td>{r.OverdueAmount:C}</td>
+              <td>{r.OldestOverdueDays}</td>
+              <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
+            </tr>
+            """));
+
+        var html = $$"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Credit Risk Dashboard</title>
+              <style>
+                body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem; background: #f7f7f8; color: #222; }
+                h1 { font-size: 1.4rem; }
+                table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+                th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid #eee; }
+                th { background: #fafafa; font-size: 0.8rem; text-transform: uppercase; color: #666; }
+                a { color: #13b5ea; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+                .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: white; }
+                .badge.high { background: #d64545; }
+                .badge.medium { background: #e0a030; }
+                .badge.low { background: #3ba55c; }
+              </style>
+            </head>
+            <body>
+              <h1>Credit Risk Dashboard</h1>
+              <table>
+                <thead>
+                  <tr><th>Contact</th><th>Overdue Invoices</th><th>Amount Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th></tr>
+                </thead>
+                <tbody>
+                  {{rows}}
+                </tbody>
+              </table>
+            </body>
+            </html>
+            """;
+
+        return Content(html, "text/html");
+    }
+}

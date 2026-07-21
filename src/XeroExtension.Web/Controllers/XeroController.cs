@@ -59,4 +59,15 @@ public class XeroController : ControllerBase
         var risk = await _creditRiskService.GetContactRiskAsync(tenantId);
         return Ok(risk);
     }
+
+    /// <summary>POST /api/xero/credit-risk/sync?tenantId={id} — writes risk levels back to Xero as Contact Groups.</summary>
+    [HttpPost("credit-risk/sync")]
+    public async Task<IActionResult> SyncCreditRisk([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BadRequest("tenantId is required.");
+
+        await _creditRiskService.SyncRiskGroupsToXeroAsync(tenantId);
+        return Ok(new { message = "Risk groups synced to Xero." });
+    }
 }

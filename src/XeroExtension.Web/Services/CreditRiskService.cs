@@ -5,6 +5,25 @@ namespace XeroExtension.Web.Services;
 
 public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
 {
+    private static readonly IReadOnlyDictionary<CreditRiskLevel, string> RiskGroupNames = new Dictionary<CreditRiskLevel, string>
+    {
+        [CreditRiskLevel.High] = "Risk: High",
+        [CreditRiskLevel.Medium] = "Risk: Medium",
+        [CreditRiskLevel.Low] = "Risk: Low"
+    };
+
+    public async Task SyncRiskGroupsToXeroAsync(string tenantId)
+    {
+        var risk = await GetContactRiskAsync(tenantId);
+
+        foreach (var (level, groupName) in RiskGroupNames)
+        {
+            var groupId = await xeroService.EnsureContactGroupAsync(tenantId, groupName);
+            var contactIds = risk.Where(r => r.RiskLevel == level).Select(r => r.ContactId).ToList();
+            await xeroService.ReplaceContactGroupMembersAsync(tenantId, groupId, contactIds);
+        }
+    }
+
     public async Task<List<ContactCreditRisk>> GetContactRiskAsync(string tenantId)
     {
         var invoices = await xeroService.GetInvoicesAsync(tenantId);
