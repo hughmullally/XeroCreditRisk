@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+
+## User secrets / local config (never commit real credentials)
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+## Rider / JetBrains
+.idea/
+
+## VS Code
+.vscode/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Claude Code (personal/local permissions, not shared project config)
+.claude/settings.local.json
