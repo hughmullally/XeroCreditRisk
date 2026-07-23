@@ -19,16 +19,26 @@ public class DashboardController : ControllerBase
             return Content("<p>Missing required query parameter: tenantId</p>", "text/html");
 
         var risk = await _creditRiskService.GetContactRiskAsync(tenantId);
+        var trends = await _creditRiskService.GetPaymentTrendAsync(tenantId);
+        var trendByContact = trends.ToDictionary(t => t.ContactId);
 
-        var rows = string.Join("\n", risk.Select(r => $"""
-            <tr>
-              <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
-              <td>{r.OutstandingAmount:C}</td>
-              <td>{r.OverdueAmount:C}</td>
-              <td>{r.OldestOverdueDays}</td>
-              <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
-            </tr>
-            """));
+        var rows = string.Join("\n", risk.Select(r =>
+        {
+            var trendCell = trendByContact.TryGetValue(r.ContactId, out var trend)
+                ? $"""<span class="trend {TrendClass(trend.TrendDelta)}">{Math.Round(trend.AverageDaysLate, 1)} days avg {TrendLabel(trend.TrendDelta)}</span>"""
+                : """<span class="muted">No payment history</span>""";
+
+            return $"""
+                <tr>
+                  <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
+                  <td>{r.OutstandingAmount:C}</td>
+                  <td>{r.OverdueAmount:C}</td>
+                  <td>{r.OldestOverdueDays}</td>
+                  <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
+                  <td>{trendCell}</td>
+                </tr>
+                """;
+        }));
 
         var html = $$"""
             <!DOCTYPE html>
@@ -49,13 +59,18 @@ public class DashboardController : ControllerBase
                 .badge.medium { background: #e0a030; }
                 .badge.low { background: #3ba55c; }
                 .badge.current { background: #6c757d; }
+                .trend { font-weight: 600; }
+                .trend.worsening { color: #d64545; }
+                .trend.improving { color: #3ba55c; }
+                .trend.stable { color: #888; }
+                .muted { color: #999; font-style: italic; }
               </style>
             </head>
             <body>
               <h1>Credit Risk Dashboard</h1>
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th></tr>
+                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th></tr>
                 </thead>
                 <tbody>
                   {{rows}}
@@ -67,4 +82,18 @@ public class DashboardController : ControllerBase
 
         return Content(html, "text/html");
     }
+
+    private static string TrendLabel(double delta) => delta switch
+    {
+        > 2 => "▲ Worsening",
+        < -2 => "▼ Improving",
+        _ => "▬ Stable"
+    };
+
+    private static string TrendClass(double delta) => delta switch
+    {
+        > 2 => "worsening",
+        < -2 => "improving",
+        _ => "stable"
+    };
 }
