@@ -161,4 +161,59 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
             .OrderBy(r => r.ContactName)
             .ToList();
     }
+
+    public async Task<List<EarlyWarningTrigger>> GetEarlyWarningsAsync(string tenantId)
+    {
+        var trends = await GetPaymentTrendAsync(tenantId);
+        var recommendations = await GetCreditLimitRecommendationsAsync(tenantId);
+
+        var warnings = new List<EarlyWarningTrigger>();
+
+        foreach (var trend in trends)
+        {
+            if (trend.History.Count >= 2)
+            {
+                var mostRecent = trend.History[^1];
+                var priorHistory = trend.History[..^1];
+
+                if (mostRecent.DaysLate > 0 && priorHistory.All(h => h.DaysLate <= 0))
+                {
+                    warnings.Add(new EarlyWarningTrigger
+                    {
+                        ContactId = trend.ContactId,
+                        ContactName = trend.ContactName,
+                        Type = EarlyWarningType.FirstLatePayment,
+                        Message = $"Always paid on time before, but invoice {mostRecent.InvoiceNumber} was {mostRecent.DaysLate} days late — first late payment on record."
+                    });
+                }
+            }
+
+            if (trend.TrendDelta > 7)
+            {
+                warnings.Add(new EarlyWarningTrigger
+                {
+                    ContactId = trend.ContactId,
+                    ContactName = trend.ContactName,
+                    Type = EarlyWarningType.AcceleratingLateness,
+                    Message = $"Payment lateness has worsened by {trend.TrendDelta:0.0} days recently — accelerating even though not yet high risk."
+                });
+            }
+        }
+
+        foreach (var rec in recommendations.Where(r => r.ExceedsRecommendedLimit))
+        {
+            warnings.Add(new EarlyWarningTrigger
+            {
+                ContactId = rec.ContactId,
+                ContactName = rec.ContactName,
+                Type = EarlyWarningType.ExceedsRecommendedLimit,
+                Message = $"Currently owes {rec.CurrentOutstanding:C}, above the recommended {rec.RecommendedCreditLimit:C} limit."
+            });
+        }
+
+        return warnings
+            .OrderBy(w => w.ContactName)
+            .ThenBy(w => w.Type)
+            .ToList();
+    }
 }

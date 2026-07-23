@@ -19,4 +19,11 @@ public interface ICreditRiskService
     /// this is a computed recommendation only — it isn't written back to Xero.
     /// </summary>
     Task<List<CreditLimitRecommendation>> GetCreditLimitRecommendationsAsync(string tenantId);
+
+    /// <summary>
+    /// Flags contacts showing early signs of trouble that wouldn't yet show up in their current
+    /// risk tier alone: a reliable payer's first-ever late payment, lateness accelerating faster
+    /// than their risk tier reflects, or already exceeding their recommended credit limit.
+    /// </summary>
+    Task<List<EarlyWarningTrigger>> GetEarlyWarningsAsync(string tenantId);
 }

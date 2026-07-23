@@ -92,4 +92,15 @@ public class XeroController : ControllerBase
         var recommendations = await _creditRiskService.GetCreditLimitRecommendationsAsync(tenantId);
         return Ok(recommendations);
     }
+
+    /// <summary>GET /api/xero/credit-risk/early-warnings?tenantId={id} — early signs of trouble not yet reflected in the current risk tier.</summary>
+    [HttpGet("credit-risk/early-warnings")]
+    public async Task<IActionResult> GetEarlyWarnings([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BadRequest("tenantId is required.");
+
+        var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
+        return Ok(warnings);
+    }
 }
