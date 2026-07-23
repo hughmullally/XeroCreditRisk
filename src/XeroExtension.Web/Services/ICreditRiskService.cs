@@ -9,4 +9,7 @@ public interface ICreditRiskService
 
     /// <summary>Writes the current risk assessment back to Xero as "Risk: High/Medium/Low" Contact Groups.</summary>
     Task SyncRiskGroupsToXeroAsync(string tenantId);
+
+    /// <summary>Per-contact history of how late paid invoices were versus their due date, plus a trend direction.</summary>
+    Task<List<ContactPaymentTrend>> GetPaymentTrendAsync(string tenantId);
 }

@@ -70,4 +70,15 @@ public class XeroController : ControllerBase
         await _creditRiskService.SyncRiskGroupsToXeroAsync(tenantId);
         return Ok(new { message = "Risk groups synced to Xero." });
     }
+
+    /// <summary>GET /api/xero/credit-risk/payment-trend?tenantId={id} — per-contact payment timeliness history and trend.</summary>
+    [HttpGet("credit-risk/payment-trend")]
+    public async Task<IActionResult> GetPaymentTrend([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BadRequest("tenantId is required.");
+
+        var trend = await _creditRiskService.GetPaymentTrendAsync(tenantId);
+        return Ok(trend);
+    }
 }

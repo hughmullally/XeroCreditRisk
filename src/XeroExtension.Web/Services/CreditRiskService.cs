@@ -64,4 +64,48 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
             .OrderByDescending(r => r.OldestOverdueDays)
             .ToList();
     }
+
+    public async Task<List<ContactPaymentTrend>> GetPaymentTrendAsync(string tenantId)
+    {
+        var invoices = await xeroService.GetInvoicesAsync(tenantId);
+
+        var paid = invoices.Where(i =>
+            i.Type == Invoice.TypeEnum.ACCREC &&
+            i.Status == Invoice.StatusEnum.PAID &&
+            i.DueDate is not null &&
+            i.FullyPaidOnDate is not null);
+
+        return paid
+            .GroupBy(i => i.Contact.ContactID)
+            .Select(g =>
+            {
+                var history = g
+                    .OrderBy(i => i.DueDate)
+                    .Select(i => new PaymentHistoryEntry
+                    {
+                        InvoiceNumber = i.InvoiceNumber,
+                        DueDate = i.DueDate!.Value,
+                        PaidDate = i.FullyPaidOnDate!.Value,
+                        DaysLate = (i.FullyPaidOnDate!.Value - i.DueDate!.Value).Days
+                    })
+                    .ToList();
+
+                var half = history.Count / 2;
+                var trendDelta = half > 0
+                    ? history.Skip(history.Count - half).Average(h => h.DaysLate)
+                      - history.Take(half).Average(h => h.DaysLate)
+                    : 0;
+
+                return new ContactPaymentTrend
+                {
+                    ContactId = g.Key.ToString() ?? string.Empty,
+                    ContactName = g.First().Contact.Name,
+                    History = history,
+                    AverageDaysLate = history.Average(h => h.DaysLate),
+                    TrendDelta = trendDelta
+                };
+            })
+            .OrderByDescending(r => r.TrendDelta)
+            .ToList();
+    }
 }
