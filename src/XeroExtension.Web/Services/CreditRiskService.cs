@@ -108,4 +108,57 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
             .OrderByDescending(r => r.TrendDelta)
             .ToList();
     }
+
+    public async Task<List<CreditLimitRecommendation>> GetCreditLimitRecommendationsAsync(string tenantId)
+    {
+        var invoices = await xeroService.GetInvoicesAsync(tenantId);
+        var riskByContact = (await GetContactRiskAsync(tenantId)).ToDictionary(r => r.ContactId);
+        var trendByContact = (await GetPaymentTrendAsync(tenantId)).ToDictionary(t => t.ContactId);
+
+        var salesInvoices = invoices.Where(i =>
+            i.Type == Invoice.TypeEnum.ACCREC &&
+            i.Status is Invoice.StatusEnum.AUTHORISED or Invoice.StatusEnum.PAID &&
+            i.Total > 0);
+
+        return salesInvoices
+            .GroupBy(i => i.Contact.ContactID)
+            .Select(g =>
+            {
+                var contactId = g.Key.ToString() ?? string.Empty;
+                var avgInvoiceAmount = g.Average(i => i.Total!.Value);
+
+                riskByContact.TryGetValue(contactId, out var risk);
+                trendByContact.TryGetValue(contactId, out var trend);
+
+                var riskLevel = risk?.RiskLevel ?? CreditRiskLevel.Current;
+                var trendDelta = trend?.TrendDelta ?? 0;
+
+                var multiplier = riskLevel switch
+                {
+                    CreditRiskLevel.Current => 3.0,
+                    CreditRiskLevel.Low => 2.0,
+                    CreditRiskLevel.Medium => 1.0,
+                    _ => 0.5
+                };
+                if (trendDelta > 2) multiplier *= 0.8;
+                else if (trendDelta < -2) multiplier *= 1.1;
+
+                var trendNote = trendDelta > 2 ? ", worsening payment trend"
+                    : trendDelta < -2 ? ", improving payment trend"
+                    : "";
+
+                return new CreditLimitRecommendation
+                {
+                    ContactId = contactId,
+                    ContactName = g.First().Contact.Name,
+                    AverageInvoiceAmount = Math.Round(avgInvoiceAmount, 2),
+                    CurrentOutstanding = risk?.OutstandingAmount ?? 0,
+                    RiskLevel = riskLevel,
+                    RecommendedCreditLimit = Math.Round(avgInvoiceAmount * (decimal)multiplier, 2),
+                    Rationale = $"Avg invoice {avgInvoiceAmount:C}, {riskLevel} risk{trendNote}."
+                };
+            })
+            .OrderBy(r => r.ContactName)
+            .ToList();
+    }
 }

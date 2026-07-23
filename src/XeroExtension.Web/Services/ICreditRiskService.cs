@@ -12,4 +12,11 @@ public interface ICreditRiskService
 
     /// <summary>Per-contact history of how late paid invoices were versus their due date, plus a trend direction.</summary>
     Task<List<ContactPaymentTrend>> GetPaymentTrendAsync(string tenantId);
+
+    /// <summary>
+    /// Suggests a credit limit per contact based on their typical invoice size, scaled by their
+    /// current risk tier and payment trend. Xero has no native credit limit field on Contacts, so
+    /// this is a computed recommendation only — it isn't written back to Xero.
+    /// </summary>
+    Task<List<CreditLimitRecommendation>> GetCreditLimitRecommendationsAsync(string tenantId);
 }

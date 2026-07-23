@@ -81,4 +81,15 @@ public class XeroController : ControllerBase
         var trend = await _creditRiskService.GetPaymentTrendAsync(tenantId);
         return Ok(trend);
     }
+
+    /// <summary>GET /api/xero/credit-risk/limit-recommendations?tenantId={id} — suggested credit limit per contact.</summary>
+    [HttpGet("credit-risk/limit-recommendations")]
+    public async Task<IActionResult> GetCreditLimitRecommendations([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BadRequest("tenantId is required.");
+
+        var recommendations = await _creditRiskService.GetCreditLimitRecommendationsAsync(tenantId);
+        return Ok(recommendations);
+    }
 }
