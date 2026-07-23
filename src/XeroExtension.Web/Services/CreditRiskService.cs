@@ -9,7 +9,8 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
     {
         [CreditRiskLevel.High] = "Risk: High",
         [CreditRiskLevel.Medium] = "Risk: Medium",
-        [CreditRiskLevel.Low] = "Risk: Low"
+        [CreditRiskLevel.Low] = "Risk: Low",
+        [CreditRiskLevel.Current] = "Risk: Current"
     };
 
     public async Task SyncRiskGroupsToXeroAsync(string tenantId)
@@ -29,30 +30,35 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
         var invoices = await xeroService.GetInvoicesAsync(tenantId);
         var now = DateTime.UtcNow;
 
-        var overdue = invoices.Where(i =>
+        var outstanding = invoices.Where(i =>
             i.Type == Invoice.TypeEnum.ACCREC &&
             i.Status == Invoice.StatusEnum.AUTHORISED &&
-            i.DueDate < now &&
             i.AmountDue > 0);
 
-        return overdue
+        return outstanding
             .GroupBy(i => i.Contact.ContactID)
             .Select(g =>
             {
-                var oldestOverdueDays = g.Max(i => (now - i.DueDate!.Value).Days);
+                var overdue = g.Where(i => i.DueDate < now).ToList();
+                var oldestOverdueDays = overdue.Count > 0 ? overdue.Max(i => (now - i.DueDate!.Value).Days) : 0;
+
                 return new ContactCreditRisk
                 {
                     ContactId = g.Key.ToString() ?? string.Empty,
                     ContactName = g.First().Contact.Name,
-                    OverdueInvoiceCount = g.Count(),
-                    OverdueAmount = g.Sum(i => i.AmountDue ?? 0),
+                    OutstandingInvoiceCount = g.Count(),
+                    OutstandingAmount = g.Sum(i => i.AmountDue ?? 0),
+                    OverdueInvoiceCount = overdue.Count,
+                    OverdueAmount = overdue.Sum(i => i.AmountDue ?? 0),
                     OldestOverdueDays = oldestOverdueDays,
-                    RiskLevel = oldestOverdueDays switch
-                    {
-                        >= 60 => CreditRiskLevel.High,
-                        >= 30 => CreditRiskLevel.Medium,
-                        _ => CreditRiskLevel.Low
-                    }
+                    RiskLevel = overdue.Count == 0
+                        ? CreditRiskLevel.Current
+                        : oldestOverdueDays switch
+                        {
+                            >= 60 => CreditRiskLevel.High,
+                            >= 30 => CreditRiskLevel.Medium,
+                            _ => CreditRiskLevel.Low
+                        }
                 };
             })
             .OrderByDescending(r => r.OldestOverdueDays)

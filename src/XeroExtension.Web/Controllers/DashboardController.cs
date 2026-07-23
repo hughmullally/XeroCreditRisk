@@ -23,7 +23,7 @@ public class DashboardController : ControllerBase
         var rows = string.Join("\n", risk.Select(r => $"""
             <tr>
               <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
-              <td>{r.OverdueInvoiceCount}</td>
+              <td>{r.OutstandingAmount:C}</td>
               <td>{r.OverdueAmount:C}</td>
               <td>{r.OldestOverdueDays}</td>
               <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
@@ -48,13 +48,14 @@ public class DashboardController : ControllerBase
                 .badge.high { background: #d64545; }
                 .badge.medium { background: #e0a030; }
                 .badge.low { background: #3ba55c; }
+                .badge.current { background: #6c757d; }
               </style>
             </head>
             <body>
               <h1>Credit Risk Dashboard</h1>
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Overdue Invoices</th><th>Amount Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th></tr>
+                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th></tr>
                 </thead>
                 <tbody>
                   {{rows}}
