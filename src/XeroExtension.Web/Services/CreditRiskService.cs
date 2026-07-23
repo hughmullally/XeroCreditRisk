@@ -154,7 +154,7 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
                     AverageInvoiceAmount = Math.Round(avgInvoiceAmount, 2),
                     CurrentOutstanding = risk?.OutstandingAmount ?? 0,
                     RiskLevel = riskLevel,
-                    RecommendedCreditLimit = Math.Round(avgInvoiceAmount * (decimal)multiplier, 2),
+                    RecommendedCreditLimit = Math.Ceiling(avgInvoiceAmount * (decimal)multiplier / 100) * 100,
                     Rationale = $"Avg invoice {avgInvoiceAmount:C}, {riskLevel} risk{trendNote}."
                 };
             })

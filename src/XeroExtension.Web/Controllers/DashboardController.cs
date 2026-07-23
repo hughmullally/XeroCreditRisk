@@ -21,12 +21,22 @@ public class DashboardController : ControllerBase
         var risk = await _creditRiskService.GetContactRiskAsync(tenantId);
         var trends = await _creditRiskService.GetPaymentTrendAsync(tenantId);
         var trendByContact = trends.ToDictionary(t => t.ContactId);
+        var recommendations = await _creditRiskService.GetCreditLimitRecommendationsAsync(tenantId);
+        var recommendationByContact = recommendations.ToDictionary(r => r.ContactId);
 
         var rows = string.Join("\n", risk.Select(r =>
         {
             var trendCell = trendByContact.TryGetValue(r.ContactId, out var trend)
                 ? $"""<span class="trend {TrendClass(trend.TrendDelta)}">{Math.Round(trend.AverageDaysLate, 1)} days avg {TrendLabel(trend.TrendDelta)}</span>"""
                 : """<span class="muted">No payment history</span>""";
+
+            var limitCell = recommendationByContact.TryGetValue(r.ContactId, out var rec)
+                ? $"""
+                    <span class="{(rec.ExceedsRecommendedLimit ? "limit-exceeded" : "")}" title="{WebUtility.HtmlEncode(rec.Rationale)}">
+                      {rec.RecommendedCreditLimit:C}{(rec.ExceedsRecommendedLimit ? " ⚠" : "")}
+                    </span>
+                    """
+                : """<span class="muted">—</span>""";
 
             return $"""
                 <tr>
@@ -36,6 +46,7 @@ public class DashboardController : ControllerBase
                   <td>{r.OldestOverdueDays}</td>
                   <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
                   <td>{trendCell}</td>
+                  <td>{limitCell}</td>
                 </tr>
                 """;
         }));
@@ -64,13 +75,14 @@ public class DashboardController : ControllerBase
                 .trend.improving { color: #3ba55c; }
                 .trend.stable { color: #888; }
                 .muted { color: #999; font-style: italic; }
+                .limit-exceeded { color: #d64545; font-weight: 600; }
               </style>
             </head>
             <body>
               <h1>Credit Risk Dashboard</h1>
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th></tr>
+                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th></tr>
                 </thead>
                 <tbody>
                   {{rows}}
