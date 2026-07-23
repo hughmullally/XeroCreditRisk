@@ -23,6 +23,20 @@ public class DashboardController : ControllerBase
         var trendByContact = trends.ToDictionary(t => t.ContactId);
         var recommendations = await _creditRiskService.GetCreditLimitRecommendationsAsync(tenantId);
         var recommendationByContact = recommendations.ToDictionary(r => r.ContactId);
+        var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
+
+        var warningItems = string.Join("\n", warnings.Select(w => $"""
+            <li><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={w.ContactId}" target="_blank">{WebUtility.HtmlEncode(w.ContactName)}</a>: {WebUtility.HtmlEncode(w.Message)}</li>
+            """));
+
+        var warningsSection = warnings.Count == 0 ? "" : $"""
+            <div class="warnings">
+              <h2>⚠ Early Warnings ({warnings.Count})</h2>
+              <ul>
+                {warningItems}
+              </ul>
+            </div>
+            """;
 
         var rows = string.Join("\n", risk.Select(r =>
         {
@@ -76,10 +90,15 @@ public class DashboardController : ControllerBase
                 .trend.stable { color: #888; }
                 .muted { color: #999; font-style: italic; }
                 .limit-exceeded { color: #d64545; font-weight: 600; }
+                .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
+                .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
+                .warnings ul { margin: 0; padding-left: 1.2rem; }
+                .warnings li { margin: 0.2rem 0; }
               </style>
             </head>
             <body>
               <h1>Credit Risk Dashboard</h1>
+              {{warningsSection}}
               <table>
                 <thead>
                   <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th></tr>
