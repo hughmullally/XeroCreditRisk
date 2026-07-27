@@ -12,7 +12,10 @@ public enum EarlyWarningType
     ExceedsRecommendedLimit,
 
     /// <summary>Companies House shows the contact's company as dissolved/in administration/liquidation etc., or with overdue statutory filings.</summary>
-    CompanyDistressSignal
+    CompanyDistressSignal,
+
+    /// <summary>Companies House shows the company has been through insolvency proceedings before, even though it's currently trading — worth a human glance, not an automatic risk escalation.</summary>
+    PriorInsolvencyHistory
 }
 
 public class EarlyWarningTrigger

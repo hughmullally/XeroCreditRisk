@@ -88,7 +88,10 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     CompanyNumber = companyNumber,
                     CompaniesHouseStatus = profile?.Status,
                     CompaniesHouseDistressed = profile?.IsDistressed ?? false,
-                    CompaniesHouseOverdueFilings = profile is { AccountsOverdue: true } or { ConfirmationStatementOverdue: true }
+                    CompaniesHouseOverdueFilings = profile is { AccountsOverdue: true } or { ConfirmationStatementOverdue: true },
+                    CompanyIncorporationDate = profile?.IncorporationDate,
+                    CompaniesHouseHasInsolvencyHistory = profile?.HasInsolvencyHistory ?? false,
+                    CompaniesHouseHasCharges = profile?.HasCharges ?? false
                 };
             })
             .OrderByDescending(r => r.OldestOverdueDays)
@@ -220,6 +223,17 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     ContactName = r.ContactName,
                     Type = EarlyWarningType.CompanyDistressSignal,
                     Message = "Companies House shows overdue statutory filings (accounts or confirmation statement)."
+                });
+            }
+
+            if (r.CompaniesHouseHasInsolvencyHistory)
+            {
+                warnings.Add(new EarlyWarningTrigger
+                {
+                    ContactId = r.ContactId,
+                    ContactName = r.ContactName,
+                    Type = EarlyWarningType.PriorInsolvencyHistory,
+                    Message = "Companies House shows this company has been through insolvency proceedings before, even though it's currently trading."
                 });
             }
         }

@@ -31,7 +31,9 @@ public class CompaniesHouseService(HttpClient httpClient, ILogger<CompaniesHouse
                 Status = dto.CompanyStatus ?? string.Empty,
                 IncorporationDate = dto.DateOfCreation,
                 AccountsOverdue = dto.Accounts?.Overdue ?? false,
-                ConfirmationStatementOverdue = dto.ConfirmationStatement?.Overdue ?? false
+                ConfirmationStatementOverdue = dto.ConfirmationStatement?.Overdue ?? false,
+                HasInsolvencyHistory = dto.Links?.Insolvency is not null,
+                HasCharges = dto.Links?.Charges is not null
             };
         }
         catch (Exception ex)
@@ -49,6 +51,14 @@ public class CompaniesHouseService(HttpClient httpClient, ILogger<CompaniesHouse
         [JsonPropertyName("date_of_creation")] public DateTime? DateOfCreation { get; set; }
         [JsonPropertyName("accounts")] public AccountsDto? Accounts { get; set; }
         [JsonPropertyName("confirmation_statement")] public ConfirmationStatementDto? ConfirmationStatement { get; set; }
+        [JsonPropertyName("links")] public LinksDto? Links { get; set; }
+    }
+
+    private class LinksDto
+    {
+        // Presence of these links (not a boolean) is how the API signals insolvency history / registered charges.
+        [JsonPropertyName("insolvency")] public string? Insolvency { get; set; }
+        [JsonPropertyName("charges")] public string? Charges { get; set; }
     }
 
     private class AccountsDto

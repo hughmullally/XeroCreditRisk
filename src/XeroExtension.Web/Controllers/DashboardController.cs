@@ -52,6 +52,19 @@ public class DashboardController : ControllerBase
                     """
                 : """<span class="muted">—</span>""";
 
+            var chCell = r.CompanyNumber is null
+                ? """<span class="muted">No company number</span>"""
+                : r.CompaniesHouseStatus is null
+                    ? $"""<span class="muted">{WebUtility.HtmlEncode(r.CompanyNumber)} (not found)</span>"""
+                    : $"""
+                        <span class="ch-status {(r.CompaniesHouseDistressed ? "distressed" : r.CompaniesHouseOverdueFilings ? "overdue-filings" : "healthy")}">
+                          {WebUtility.HtmlEncode(r.CompaniesHouseStatus)}{(r.CompaniesHouseOverdueFilings ? " ⚠ filings overdue" : "")}
+                        </span>
+                        {(r.CompanyIncorporationDate is { } inc ? $"""<div class="ch-meta">Est. {inc:yyyy} ({(int)((DateTime.UtcNow - inc).TotalDays / 365.25)}y)</div>""" : "")}
+                        {(r.CompaniesHouseHasInsolvencyHistory ? """<div class="ch-meta warn">⚠ Prior insolvency</div>""" : "")}
+                        {(r.CompaniesHouseHasCharges ? """<div class="ch-meta">🔒 Has registered charges</div>""" : "")}
+                        """;
+
             return $"""
                 <tr>
                   <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
@@ -61,6 +74,7 @@ public class DashboardController : ControllerBase
                   <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
                   <td>{trendCell}</td>
                   <td>{limitCell}</td>
+                  <td>{chCell}</td>
                 </tr>
                 """;
         }));
@@ -90,6 +104,12 @@ public class DashboardController : ControllerBase
                 .trend.stable { color: #888; }
                 .muted { color: #999; font-style: italic; }
                 .limit-exceeded { color: #d64545; font-weight: 600; }
+                .ch-status { font-weight: 600; }
+                .ch-status.distressed { color: #d64545; }
+                .ch-status.overdue-filings { color: #e0a030; }
+                .ch-status.healthy { color: #3ba55c; }
+                .ch-meta { font-size: 0.75rem; color: #888; margin-top: 0.15rem; }
+                .ch-meta.warn { color: #e0a030; }
                 .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
                 .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
                 .warnings ul { margin: 0; padding-left: 1.2rem; }
@@ -101,7 +121,7 @@ public class DashboardController : ControllerBase
               {{warningsSection}}
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th></tr>
+                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th><th>Companies House</th></tr>
                 </thead>
                 <tbody>
                   {{rows}}

@@ -18,4 +18,7 @@ public class ContactCreditRisk
     public string? CompaniesHouseStatus { get; set; }
     public bool CompaniesHouseDistressed { get; set; }
     public bool CompaniesHouseOverdueFilings { get; set; }
+    public DateTime? CompanyIncorporationDate { get; set; }
+    public bool CompaniesHouseHasInsolvencyHistory { get; set; }
+    public bool CompaniesHouseHasCharges { get; set; }
 }

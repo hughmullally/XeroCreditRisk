@@ -14,6 +14,8 @@ public class CompanyProfile
     public DateTime? IncorporationDate { get; set; }
     public bool AccountsOverdue { get; set; }
     public bool ConfirmationStatementOverdue { get; set; }
+    public bool HasInsolvencyHistory { get; set; }
+    public bool HasCharges { get; set; }
 
     public bool IsDistressed => DistressedStatuses.Contains(Status);
 }
