@@ -3,7 +3,7 @@ using XeroExtension.Web.Models;
 
 namespace XeroExtension.Web.Services;
 
-public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
+public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService companiesHouseService) : ICreditRiskService
 {
     private static readonly IReadOnlyDictionary<CreditRiskLevel, string> RiskGroupNames = new Dictionary<CreditRiskLevel, string>
     {
@@ -35,12 +35,45 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
             i.Status == Invoice.StatusEnum.AUTHORISED &&
             i.AmountDue > 0);
 
-        return outstanding
-            .GroupBy(i => i.Contact.ContactID)
+        var grouped = outstanding.GroupBy(i => i.Contact.ContactID).ToList();
+        if (grouped.Count == 0)
+            return [];
+
+        var contacts = await xeroService.GetContactsAsync(tenantId);
+        var companyNumberByContact = contacts
+            .Where(c => c.ContactID is not null && !string.IsNullOrWhiteSpace(c.CompanyNumber))
+            .ToDictionary(c => c.ContactID!.Value, c => c.CompanyNumber!);
+
+        var companyNumbers = grouped
+            .Where(g => g.Key.HasValue && companyNumberByContact.ContainsKey(g.Key.Value))
+            .Select(g => companyNumberByContact[g.Key!.Value])
+            .Distinct()
+            .ToList();
+
+        var profileLookups = companyNumbers.ToDictionary(n => n, n => companiesHouseService.GetCompanyProfileAsync(n));
+        await Task.WhenAll(profileLookups.Values);
+        var profileByCompanyNumber = profileLookups.ToDictionary(kv => kv.Key, kv => kv.Value.Result);
+
+        return grouped
             .Select(g =>
             {
                 var overdue = g.Where(i => i.DueDate < now).ToList();
                 var oldestOverdueDays = overdue.Count > 0 ? overdue.Max(i => (now - i.DueDate!.Value).Days) : 0;
+
+                var riskLevel = overdue.Count == 0
+                    ? CreditRiskLevel.Current
+                    : oldestOverdueDays switch
+                    {
+                        >= 60 => CreditRiskLevel.High,
+                        >= 30 => CreditRiskLevel.Medium,
+                        _ => CreditRiskLevel.Low
+                    };
+
+                var companyNumber = g.Key.HasValue && companyNumberByContact.TryGetValue(g.Key.Value, out var cn) ? cn : null;
+                var profile = companyNumber is not null && profileByCompanyNumber.TryGetValue(companyNumber, out var p) ? p : null;
+
+                if (profile?.IsDistressed == true)
+                    riskLevel = CreditRiskLevel.High;
 
                 return new ContactCreditRisk
                 {
@@ -51,14 +84,11 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
                     OverdueInvoiceCount = overdue.Count,
                     OverdueAmount = overdue.Sum(i => i.AmountDue ?? 0),
                     OldestOverdueDays = oldestOverdueDays,
-                    RiskLevel = overdue.Count == 0
-                        ? CreditRiskLevel.Current
-                        : oldestOverdueDays switch
-                        {
-                            >= 60 => CreditRiskLevel.High,
-                            >= 30 => CreditRiskLevel.Medium,
-                            _ => CreditRiskLevel.Low
-                        }
+                    RiskLevel = riskLevel,
+                    CompanyNumber = companyNumber,
+                    CompaniesHouseStatus = profile?.Status,
+                    CompaniesHouseDistressed = profile?.IsDistressed ?? false,
+                    CompaniesHouseOverdueFilings = profile is { AccountsOverdue: true } or { ConfirmationStatementOverdue: true }
                 };
             })
             .OrderByDescending(r => r.OldestOverdueDays)
@@ -164,10 +194,35 @@ public class CreditRiskService(IXeroService xeroService) : ICreditRiskService
 
     public async Task<List<EarlyWarningTrigger>> GetEarlyWarningsAsync(string tenantId)
     {
+        var risk = await GetContactRiskAsync(tenantId);
         var trends = await GetPaymentTrendAsync(tenantId);
         var recommendations = await GetCreditLimitRecommendationsAsync(tenantId);
 
         var warnings = new List<EarlyWarningTrigger>();
+
+        foreach (var r in risk)
+        {
+            if (r.CompaniesHouseDistressed)
+            {
+                warnings.Add(new EarlyWarningTrigger
+                {
+                    ContactId = r.ContactId,
+                    ContactName = r.ContactName,
+                    Type = EarlyWarningType.CompanyDistressSignal,
+                    Message = $"Companies House shows this company's status as \"{r.CompaniesHouseStatus}\"."
+                });
+            }
+            else if (r.CompaniesHouseOverdueFilings)
+            {
+                warnings.Add(new EarlyWarningTrigger
+                {
+                    ContactId = r.ContactId,
+                    ContactName = r.ContactName,
+                    Type = EarlyWarningType.CompanyDistressSignal,
+                    Message = "Companies House shows overdue statutory filings (accounts or confirmation statement)."
+                });
+            }
+        }
 
         foreach (var trend in trends)
         {

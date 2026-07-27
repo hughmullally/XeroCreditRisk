@@ -9,7 +9,10 @@ public enum EarlyWarningType
     AcceleratingLateness,
 
     /// <summary>The contact currently owes more than their recommended credit limit.</summary>
-    ExceedsRecommendedLimit
+    ExceedsRecommendedLimit,
+
+    /// <summary>Companies House shows the contact's company as dissolved/in administration/liquidation etc., or with overdue statutory filings.</summary>
+    CompanyDistressSignal
 }
 
 public class EarlyWarningTrigger

@@ -12,4 +12,10 @@ public class ContactCreditRisk
     public decimal OverdueAmount { get; set; }
     public int OldestOverdueDays { get; set; }
     public CreditRiskLevel RiskLevel { get; set; }
+
+    /// <summary>Populated only when the Xero contact has a CompanyNumber that matched a Companies House lookup.</summary>
+    public string? CompanyNumber { get; set; }
+    public string? CompaniesHouseStatus { get; set; }
+    public bool CompaniesHouseDistressed { get; set; }
+    public bool CompaniesHouseOverdueFilings { get; set; }
 }

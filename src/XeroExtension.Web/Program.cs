@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics;
 using Xero.NetStandard.OAuth2.Client;
@@ -18,6 +20,15 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ITokenStore, InMemoryTokenStore>();
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddScoped<ICreditRiskService, CreditRiskService>();
+
+// ── Companies House ─────────────────────────────────────────────────────────
+var companiesHouseApiKey = builder.Configuration["CompaniesHouse:ApiKey"] ?? string.Empty;
+builder.Services.AddHttpClient<ICompaniesHouseService, CompaniesHouseService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.company-information.service.gov.uk/");
+    var authValue = Convert.ToBase64String(Encoding.ASCII.GetBytes(companiesHouseApiKey + ":"));
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authValue);
+});
 
 // ── ASP.NET Core ─────────────────────────────────────────────────────────────
 builder.Services.AddControllers()
