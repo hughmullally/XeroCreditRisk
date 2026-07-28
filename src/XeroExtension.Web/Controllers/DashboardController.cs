@@ -8,8 +8,56 @@ namespace XeroExtension.Web.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly ICreditRiskService _creditRiskService;
+    private readonly DashboardNotifier _notifier;
 
-    public DashboardController(ICreditRiskService creditRiskService) => _creditRiskService = creditRiskService;
+    public DashboardController(ICreditRiskService creditRiskService, DashboardNotifier notifier)
+    {
+        _creditRiskService = creditRiskService;
+        _notifier = notifier;
+    }
+
+    /// <summary>
+    /// GET /dashboard/events — Server-Sent Events stream. Sends "data: changed" whenever the Xero
+    /// webhook receiver processes an event, so open dashboard tabs can refresh themselves.
+    /// </summary>
+    [HttpGet("events")]
+    public async Task Events(CancellationToken cancellationToken)
+    {
+        Response.Headers.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+
+        var changed = new TaskCompletionSource();
+        void OnChanged() => changed.TrySetResult();
+        _notifier.Changed += OnChanged;
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var finished = await Task.WhenAny(changed.Task, Task.Delay(TimeSpan.FromSeconds(25), cancellationToken));
+
+                if (finished == changed.Task)
+                {
+                    await Response.WriteAsync("data: changed\n\n", cancellationToken);
+                    changed = new TaskCompletionSource();
+                }
+                else
+                {
+                    await Response.WriteAsync(": keep-alive\n\n", cancellationToken);
+                }
+
+                await Response.Body.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected — expected when the browser tab closes or reloads.
+        }
+        finally
+        {
+            _notifier.Changed -= OnChanged;
+        }
+    }
 
     /// <summary>GET /dashboard?tenantId={id} — credit risk table with deep links into Xero contact records.</summary>
     [HttpGet]
@@ -121,10 +169,14 @@ public class DashboardController : ControllerBase
                 .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
                 .warnings ul { margin: 0; padding-left: 1.2rem; }
                 .warnings li { margin: 0.2rem 0; }
+                .live-status { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; vertical-align: middle; }
+                .live-status.connecting { background: #eee; color: #888; }
+                .live-status.live { background: #e6f7ec; color: #3ba55c; }
+                .live-status.disconnected { background: #fbe7e7; color: #d64545; }
               </style>
             </head>
             <body>
-              <h1>Credit Risk Dashboard</h1>
+              <h1>Credit Risk Dashboard <span id="liveStatus" class="live-status connecting">connecting…</span></h1>
               {{warningsSection}}
               <table>
                 <thead>
@@ -134,6 +186,21 @@ public class DashboardController : ControllerBase
                   {{rows}}
                 </tbody>
               </table>
+
+              <script>
+                const liveStatus = document.getElementById('liveStatus');
+                const source = new EventSource('/dashboard/events');
+
+                source.onopen = () => {
+                  liveStatus.textContent = '🟢 Live';
+                  liveStatus.className = 'live-status live';
+                };
+                source.onerror = () => {
+                  liveStatus.textContent = '🔴 Disconnected';
+                  liveStatus.className = 'live-status disconnected';
+                };
+                source.onmessage = () => location.reload();
+              </script>
             </body>
             </html>
             """;

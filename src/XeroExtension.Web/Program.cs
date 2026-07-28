@@ -20,6 +20,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ITokenStore, InMemoryTokenStore>();
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddScoped<ICreditRiskService, CreditRiskService>();
+builder.Services.AddSingleton<DashboardNotifier>();
 
 // ── Companies House ─────────────────────────────────────────────────────────
 var companiesHouseApiKey = builder.Configuration["CompaniesHouse:ApiKey"] ?? string.Empty;
