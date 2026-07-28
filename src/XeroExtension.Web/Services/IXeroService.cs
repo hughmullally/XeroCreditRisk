@@ -13,4 +13,10 @@ public interface IXeroService
 
     /// <summary>Replaces a Contact Group's membership wholesale: clears existing members, then adds the given contacts.</summary>
     Task ReplaceContactGroupMembersAsync(string tenantId, Guid contactGroupId, IReadOnlyCollection<string> contactIds);
+
+    /// <summary>Contacts that have no ACCREC (sales) invoices at all yet.</summary>
+    Task<List<Contact>> GetContactsWithoutSalesInvoicesAsync(string tenantId);
+
+    /// <summary>Creates and authorises a single sales invoice. Test/demo data seeding only.</summary>
+    Task<Guid> CreateSalesInvoiceAsync(string tenantId, Guid contactId, DateTime dueDate, decimal amount, string description);
 }

@@ -78,6 +78,50 @@ public class XeroService : IXeroService
         await _accountingApi.CreateContactGroupContactsAsync(token.AccessToken, tenantId, contactGroupId, contacts);
     }
 
+    public async Task<List<Contact>> GetContactsWithoutSalesInvoicesAsync(string tenantId)
+    {
+        var contacts = await GetContactsAsync(tenantId);
+        var invoices = await GetInvoicesAsync(tenantId);
+
+        var contactIdsWithInvoices = invoices
+            .Where(i => i.Type == Invoice.TypeEnum.ACCREC)
+            .Select(i => i.Contact.ContactID)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
+        return contacts
+            .Where(c => c.ContactID.HasValue && !contactIdsWithInvoices.Contains(c.ContactID.Value))
+            .ToList();
+    }
+
+    public async Task<Guid> CreateSalesInvoiceAsync(string tenantId, Guid contactId, DateTime dueDate, decimal amount, string description)
+    {
+        var token = await GetValidTokenAsync();
+
+        var invoice = new Invoice
+        {
+            Type = Invoice.TypeEnum.ACCREC,
+            Contact = new Contact { ContactID = contactId },
+            Date = dueDate.AddDays(-14),
+            DueDate = dueDate,
+            Status = Invoice.StatusEnum.AUTHORISED,
+            LineItems =
+            [
+                new LineItem
+                {
+                    Description = description,
+                    Quantity = 1,
+                    UnitAmount = amount,
+                    AccountCode = "200"
+                }
+            ]
+        };
+
+        var result = await _accountingApi.CreateInvoicesAsync(token.AccessToken, tenantId, new Invoices { _Invoices = [invoice] });
+        return result._Invoices![0].InvoiceID!.Value;
+    }
+
     private async Task<XeroTokenSet> GetValidTokenAsync()
     {
         var tokenSet = await _tokenStore.GetAsync(UserId)
