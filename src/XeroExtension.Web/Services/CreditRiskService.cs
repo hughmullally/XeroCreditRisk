@@ -54,7 +54,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
         await Task.WhenAll(profileLookups.Values);
         var profileByCompanyNumber = profileLookups.ToDictionary(kv => kv.Key, kv => kv.Value.Result);
 
-        return grouped
+        var results = grouped
             .Select(g =>
             {
                 var overdue = g.Where(i => i.DueDate < now).ToList();
@@ -94,6 +94,16 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     CompaniesHouseHasCharges = profile?.HasCharges ?? false
                 };
             })
+            .ToList();
+
+        var totalOutstanding = results.Sum(r => r.OutstandingAmount);
+        if (totalOutstanding > 0)
+        {
+            foreach (var r in results)
+                r.ConcentrationPercent = Math.Round(r.OutstandingAmount / totalOutstanding * 100, 1);
+        }
+
+        return results
             .OrderByDescending(r => r.OldestOverdueDays)
             .ToList();
     }
@@ -234,6 +244,17 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     ContactName = r.ContactName,
                     Type = EarlyWarningType.PriorInsolvencyHistory,
                     Message = "Companies House shows this company has been through insolvency proceedings before, even though it's currently trading."
+                });
+            }
+
+            if (r.ConcentrationPercent > 25)
+            {
+                warnings.Add(new EarlyWarningTrigger
+                {
+                    ContactId = r.ContactId,
+                    ContactName = r.ContactName,
+                    Type = EarlyWarningType.ConcentrationRisk,
+                    Message = $"Accounts for {r.ConcentrationPercent:0.#}% of total outstanding receivables — a large share to have riding on one contact."
                 });
             }
         }

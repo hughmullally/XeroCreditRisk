@@ -13,6 +13,9 @@ public class ContactCreditRisk
     public int OldestOverdueDays { get; set; }
     public CreditRiskLevel RiskLevel { get; set; }
 
+    /// <summary>This contact's share (0-100) of the total outstanding receivables across all at-risk contacts.</summary>
+    public decimal ConcentrationPercent { get; set; }
+
     /// <summary>Populated only when the Xero contact has a CompanyNumber that matched a Companies House lookup.</summary>
     public string? CompanyNumber { get; set; }
     public string? CompaniesHouseStatus { get; set; }

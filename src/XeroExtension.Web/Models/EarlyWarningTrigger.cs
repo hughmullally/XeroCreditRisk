@@ -15,7 +15,10 @@ public enum EarlyWarningType
     CompanyDistressSignal,
 
     /// <summary>Companies House shows the company has been through insolvency proceedings before, even though it's currently trading — worth a human glance, not an automatic risk escalation.</summary>
-    PriorInsolvencyHistory
+    PriorInsolvencyHistory,
+
+    /// <summary>A single contact accounts for an outsized share of total outstanding receivables — risky even if that contact is individually paying fine.</summary>
+    ConcentrationRisk
 }
 
 public class EarlyWarningTrigger

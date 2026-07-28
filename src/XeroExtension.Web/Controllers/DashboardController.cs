@@ -65,10 +65,13 @@ public class DashboardController : ControllerBase
                         {(r.CompaniesHouseHasCharges ? """<div class="ch-meta">🔒 Has registered charges</div>""" : "")}
                         """;
 
+            var concentrationCell = $"""<span class="concentration {ConcentrationClass(r.ConcentrationPercent)}">{r.ConcentrationPercent:0.#}%</span>""";
+
             return $"""
                 <tr>
                   <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
                   <td>{r.OutstandingAmount:C}</td>
+                  <td>{concentrationCell}</td>
                   <td>{r.OverdueAmount:C}</td>
                   <td>{r.OldestOverdueDays}</td>
                   <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
@@ -110,6 +113,10 @@ public class DashboardController : ControllerBase
                 .ch-status.healthy { color: #3ba55c; }
                 .ch-meta { font-size: 0.75rem; color: #888; margin-top: 0.15rem; }
                 .ch-meta.warn { color: #e0a030; }
+                .concentration { font-weight: 600; }
+                .concentration.high { color: #d64545; }
+                .concentration.medium { color: #e0a030; }
+                .concentration.low { color: #888; font-weight: normal; }
                 .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
                 .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
                 .warnings ul { margin: 0; padding-left: 1.2rem; }
@@ -121,7 +128,7 @@ public class DashboardController : ControllerBase
               {{warningsSection}}
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Outstanding</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th><th>Companies House</th></tr>
+                  <tr><th>Contact</th><th>Outstanding</th><th>Concentration</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th><th>Companies House</th></tr>
                 </thead>
                 <tbody>
                   {{rows}}
@@ -146,5 +153,12 @@ public class DashboardController : ControllerBase
         > 2 => "worsening",
         < -2 => "improving",
         _ => "stable"
+    };
+
+    private static string ConcentrationClass(decimal percent) => percent switch
+    {
+        > 25 => "high",
+        > 10 => "medium",
+        _ => "low"
     };
 }
