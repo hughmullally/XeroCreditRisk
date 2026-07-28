@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
+using XeroExtension.Web.Models;
 using XeroExtension.Web.Services;
 
 namespace XeroExtension.Web.Controllers;
@@ -73,16 +74,53 @@ public class DashboardController : ControllerBase
         var recommendationByContact = recommendations.ToDictionary(r => r.ContactId);
         var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
 
-        var warningItems = string.Join("\n", warnings.Select(w => $"""
-            <li><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={w.ContactId}" target="_blank">{WebUtility.HtmlEncode(w.ContactName)}</a>: {WebUtility.HtmlEncode(w.Message)}</li>
+        var warningsByContact = warnings
+            .GroupBy(w => new { w.ContactId, w.ContactName })
+            .OrderByDescending(g => g.Count())
+            .ToList();
+
+        var warningGroupsByContact = string.Join("\n", warningsByContact.Select(g => $"""
+            <details>
+              <summary>
+                <a href="https://go.xero.com/Contacts/Edit.aspx?contactID={g.Key.ContactId}" target="_blank" onclick="event.stopPropagation()">{WebUtility.HtmlEncode(g.Key.ContactName)}</a>
+                <span class="warning-count">{g.Count()}</span>
+              </summary>
+              <ul>
+                {string.Join("\n", g.Select(w => $"<li>{WebUtility.HtmlEncode(w.Message)}</li>"))}
+              </ul>
+            </details>
+            """));
+
+        var warningsByType = warnings
+            .GroupBy(w => w.Type)
+            .OrderByDescending(g => g.Count())
+            .ToList();
+
+        var warningGroupsByType = string.Join("\n", warningsByType.Select(g => $"""
+            <details>
+              <summary>
+                {WarningTypeLabel(g.Key)}
+                <span class="warning-count">{g.Count()}</span>
+              </summary>
+              <ul>
+                {string.Join("\n", g.Select(w => $"""<li><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={w.ContactId}" target="_blank">{WebUtility.HtmlEncode(w.ContactName)}</a>: {WebUtility.HtmlEncode(w.Message)}</li>"""))}
+              </ul>
+            </details>
             """));
 
         var warningsSection = warnings.Count == 0 ? "" : $"""
             <div class="warnings">
-              <h2>⚠ Early Warnings ({warnings.Count})</h2>
-              <ul>
-                {warningItems}
-              </ul>
+              <h2>⚠ Early Warnings ({warnings.Count} across {warningsByContact.Count} counterparties)</h2>
+              <div class="group-toggle">
+                <label><input type="radio" name="groupBy" value="contact" checked /> By Counterparty</label>
+                <label><input type="radio" name="groupBy" value="type" /> By Warning Type</label>
+              </div>
+              <div class="warnings-list" id="warningsByContact">
+                {warningGroupsByContact}
+              </div>
+              <div class="warnings-list" id="warningsByType" style="display:none">
+                {warningGroupsByType}
+              </div>
             </div>
             """;
 
@@ -167,8 +205,15 @@ public class DashboardController : ControllerBase
                 .concentration.low { color: #888; font-weight: normal; }
                 .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
                 .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
-                .warnings ul { margin: 0; padding-left: 1.2rem; }
+                .warnings ul { margin: 0.3rem 0 0.6rem 1.2rem; padding: 0; }
                 .warnings li { margin: 0.2rem 0; }
+                .warnings-list { column-count: 2; column-gap: 2rem; }
+                .warnings details { margin: 0.3rem 0; break-inside: avoid; }
+                .warnings summary { cursor: pointer; font-weight: 600; padding: 0.2rem 0; }
+                .warnings summary a { font-weight: 600; }
+                .warning-count { background: #e0a030; color: white; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.75rem; margin-left: 0.4rem; }
+                .group-toggle { margin-bottom: 0.6rem; font-size: 0.85rem; }
+                .group-toggle label { margin-right: 1.2rem; cursor: pointer; }
                 .live-status { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; vertical-align: middle; }
                 .live-status.connecting { background: #eee; color: #888; }
                 .live-status.live { background: #e6f7ec; color: #3ba55c; }
@@ -200,6 +245,13 @@ public class DashboardController : ControllerBase
                   liveStatus.className = 'live-status disconnected';
                 };
                 source.onmessage = () => location.reload();
+
+                document.querySelectorAll('input[name="groupBy"]').forEach(radio => {
+                  radio.addEventListener('change', (e) => {
+                    document.getElementById('warningsByContact').style.display = e.target.value === 'contact' ? '' : 'none';
+                    document.getElementById('warningsByType').style.display = e.target.value === 'type' ? '' : 'none';
+                  });
+                });
               </script>
             </body>
             </html>
@@ -227,5 +279,16 @@ public class DashboardController : ControllerBase
         > 25 => "high",
         > 10 => "medium",
         _ => "low"
+    };
+
+    private static string WarningTypeLabel(EarlyWarningType type) => type switch
+    {
+        EarlyWarningType.FirstLatePayment => "First Late Payment",
+        EarlyWarningType.AcceleratingLateness => "Accelerating Lateness",
+        EarlyWarningType.ExceedsRecommendedLimit => "Exceeds Recommended Limit",
+        EarlyWarningType.CompanyDistressSignal => "Company Distress Signal",
+        EarlyWarningType.PriorInsolvencyHistory => "Prior Insolvency History",
+        EarlyWarningType.ConcentrationRisk => "Concentration Risk",
+        _ => type.ToString()
     };
 }
