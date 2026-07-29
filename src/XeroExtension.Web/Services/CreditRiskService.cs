@@ -175,7 +175,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
     {
         var invoices = await GetInvoicesCachedAsync(tenantId);
         var riskByContact = (await GetContactRiskAsync(tenantId)).ToDictionary(r => r.ContactId);
-        var trendByContact = (await GetPaymentTrendAsync(tenantId)).ToDictionary(t => t.ContactId);
+        var scoreByContact = (await GetCreditScoresAsync(tenantId)).ToDictionary(s => s.ContactId);
 
         var salesInvoices = invoices.Where(i =>
             i.Type == Invoice.TypeEnum.ACCREC &&
@@ -187,37 +187,34 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
             .Select(g =>
             {
                 var contactId = g.Key.ToString() ?? string.Empty;
-                var avgInvoiceAmount = g.Average(i => i.Total!.Value);
+                var avgInvoiceAmount = Math.Round(g.Average(i => i.Total!.Value), 2);
 
                 riskByContact.TryGetValue(contactId, out var risk);
-                trendByContact.TryGetValue(contactId, out var trend);
+                scoreByContact.TryGetValue(contactId, out var score);
 
-                var riskLevel = risk?.RiskLevel ?? CreditRiskLevel.Current;
-                var trendDelta = trend?.TrendDelta ?? 0;
+                // Contacts with no outstanding invoices don't appear in the score list at all — treat
+                // them as a perfect 100, matching the "Current, no issues" default used elsewhere.
+                var scoreValue = score?.Score ?? 100;
+                var multiplier = scoreValue / 100.0 * 3.0;
+                var recommendedLimit = Math.Ceiling(avgInvoiceAmount * (decimal)multiplier / 100) * 100;
 
-                var multiplier = riskLevel switch
+                var reasons = new List<string>
                 {
-                    CreditRiskLevel.Current => 3.0,
-                    CreditRiskLevel.Low => 2.0,
-                    CreditRiskLevel.Medium => 1.0,
-                    _ => 0.5
+                    $"Average invoice amount: {avgInvoiceAmount:C}",
+                    $"Credit score {scoreValue}/100 → multiplier {multiplier:0.00}×",
+                    $"{avgInvoiceAmount:C} × {multiplier:0.00} = {avgInvoiceAmount * (decimal)multiplier:C}, rounded up to nearest £100 → {recommendedLimit:C}"
                 };
-                if (trendDelta > 2) multiplier *= 0.8;
-                else if (trendDelta < -2) multiplier *= 1.1;
-
-                var trendNote = trendDelta > 2 ? ", worsening payment trend"
-                    : trendDelta < -2 ? ", improving payment trend"
-                    : "";
 
                 return new CreditLimitRecommendation
                 {
                     ContactId = contactId,
                     ContactName = g.First().Contact.Name,
-                    AverageInvoiceAmount = Math.Round(avgInvoiceAmount, 2),
+                    AverageInvoiceAmount = avgInvoiceAmount,
                     CurrentOutstanding = risk?.OutstandingAmount ?? 0,
-                    RiskLevel = riskLevel,
-                    RecommendedCreditLimit = Math.Ceiling(avgInvoiceAmount * (decimal)multiplier / 100) * 100,
-                    Rationale = $"Avg invoice {avgInvoiceAmount:C}, {riskLevel} risk{trendNote}."
+                    RiskLevel = risk?.RiskLevel ?? CreditRiskLevel.Current,
+                    RecommendedCreditLimit = recommendedLimit,
+                    Rationale = $"Avg invoice {avgInvoiceAmount:C}, credit score {scoreValue}/100 (×{multiplier:0.00}).",
+                    Reasons = reasons
                 };
             })
             .OrderBy(r => r.ContactName)
@@ -324,5 +321,75 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
             .OrderBy(w => w.ContactName)
             .ThenBy(w => w.Type)
             .ToList();
+    }
+
+    public async Task<List<ContactCreditScore>> GetCreditScoresAsync(string tenantId)
+    {
+        var risk = await GetContactRiskAsync(tenantId);
+        var trendByContact = (await GetPaymentTrendAsync(tenantId)).ToDictionary(t => t.ContactId);
+
+        return risk.Select(r =>
+        {
+            var score = 100;
+            var reasons = new List<string> { "Baseline (+100)" };
+
+            void Apply(int delta, string label)
+            {
+                if (delta == 0) return;
+                score += delta;
+                reasons.Add($"{label} ({(delta > 0 ? "+" : "")}{delta})");
+            }
+
+            Apply(r.RiskLevel switch
+            {
+                CreditRiskLevel.High => -40,
+                CreditRiskLevel.Medium => -25,
+                CreditRiskLevel.Low => -10,
+                _ => 0
+            }, $"Risk tier: {r.RiskLevel}");
+
+            if (trendByContact.TryGetValue(r.ContactId, out var trend))
+            {
+                if (trend.TrendDelta > 7) Apply(-15, $"Payment lateness worsening by {trend.TrendDelta:0.0} days");
+                else if (trend.TrendDelta > 2) Apply(-7, $"Payment lateness slightly worsening ({trend.TrendDelta:0.0} days)");
+                else if (trend.TrendDelta < -2) Apply(5, $"Payment lateness improving ({trend.TrendDelta:0.0} days)");
+            }
+
+            Apply(r.ConcentrationPercent switch
+            {
+                > 25 => -10,
+                > 10 => -5,
+                _ => 0
+            }, $"Concentration: {r.ConcentrationPercent:0.#}% of outstanding receivables");
+
+            if (r.CompaniesHouseDistressed) Apply(-30, $"Companies House status: \"{r.CompaniesHouseStatus}\"");
+            if (r.CompaniesHouseOverdueFilings) Apply(-10, "Companies House: overdue statutory filings");
+            if (r.CompaniesHouseHasInsolvencyHistory) Apply(-10, "Companies House: prior insolvency history");
+
+            var clamped = Math.Clamp(score, 0, 100);
+            if (clamped != score)
+                reasons.Add($"Clamped to 0-100 range ({(clamped > score ? "+" : "")}{clamped - score})");
+            score = clamped;
+
+            var grade = score switch
+            {
+                >= 80 => "A",
+                >= 60 => "B",
+                >= 40 => "C",
+                >= 20 => "D",
+                _ => "F"
+            };
+
+            return new ContactCreditScore
+            {
+                ContactId = r.ContactId,
+                ContactName = r.ContactName,
+                Score = score,
+                Grade = grade,
+                Reasons = reasons
+            };
+        })
+        .OrderBy(s => s.Score)
+        .ToList();
     }
 }

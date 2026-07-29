@@ -75,6 +75,8 @@ public class DashboardController : ControllerBase
         var recommendations = await _creditRiskService.GetCreditLimitRecommendationsAsync(tenantId);
         var recommendationByContact = recommendations.ToDictionary(r => r.ContactId);
         var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
+        var scores = await _creditRiskService.GetCreditScoresAsync(tenantId);
+        var scoreByContact = scores.ToDictionary(s => s.ContactId);
 
         var warningsByContact = warnings
             .GroupBy(w => new { w.ContactId, w.ContactName })
@@ -139,9 +141,16 @@ public class DashboardController : ControllerBase
 
             var limitCell = recommendationByContact.TryGetValue(r.ContactId, out var rec)
                 ? $"""
-                    <span class="{(rec.ExceedsRecommendedLimit ? "limit-exceeded" : "")}" title="{WebUtility.HtmlEncode(rec.Rationale)}">
-                      {rec.RecommendedCreditLimit:C}{(rec.ExceedsRecommendedLimit ? " ⚠" : "")}
-                    </span>
+                    <details class="limit-drilldown">
+                      <summary>
+                        <span class="{(rec.ExceedsRecommendedLimit ? "limit-exceeded" : "")}">
+                          {rec.RecommendedCreditLimit:C}{(rec.ExceedsRecommendedLimit ? " ⚠" : "")}
+                        </span>
+                      </summary>
+                      <ul>
+                        {string.Join("\n", rec.Reasons.Select(reason => $"<li>{WebUtility.HtmlEncode(reason)}</li>"))}
+                      </ul>
+                    </details>
                     """
                 : """<span class="muted">—</span>""";
 
@@ -164,9 +173,22 @@ public class DashboardController : ControllerBase
             var limitSortValue = recommendationByContact.TryGetValue(r.ContactId, out var recForSort) ? recForSort.RecommendedCreditLimit.ToString() : "";
             var chSortValue = CompaniesHouseSortRank(r);
 
+            var scoreCell = scoreByContact.TryGetValue(r.ContactId, out var score)
+                ? $"""
+                    <details class="score-drilldown">
+                      <summary><span class="score-badge {GradeClass(score.Grade)}">{score.Score} ({score.Grade})</span></summary>
+                      <ul>
+                        {string.Join("\n", score.Reasons.Select(reason => $"<li>{WebUtility.HtmlEncode(reason)}</li>"))}
+                      </ul>
+                    </details>
+                    """
+                : """<span class="muted">—</span>""";
+            var scoreSortValue = scoreByContact.TryGetValue(r.ContactId, out var scoreForSort) ? scoreForSort.Score.ToString() : "";
+
             return $"""
                 <tr data-contact-id="{r.ContactId}">
                   <td data-sort-value="{WebUtility.HtmlEncode(r.ContactName)}"><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
+                  <td data-sort-value="{scoreSortValue}">{scoreCell}</td>
                   <td data-sort-value="{r.OutstandingAmount}">{r.OutstandingAmount:C}</td>
                   <td data-sort-value="{r.ConcentrationPercent}">{concentrationCell}</td>
                   <td data-sort-value="{r.OverdueAmount}">{r.OverdueAmount:C}</td>
@@ -201,6 +223,16 @@ public class DashboardController : ControllerBase
                 .badge.medium { background: #e0a030; }
                 .badge.low { background: #3ba55c; }
                 .badge.current { background: #6c757d; }
+                .score-badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: white; }
+                .score-badge.grade-a { background: #3ba55c; }
+                .score-badge.grade-b { background: #6cbf6c; }
+                .score-badge.grade-c { background: #e0a030; }
+                .score-badge.grade-d { background: #e0763a; }
+                .score-badge.grade-f { background: #d64545; }
+                .score-drilldown summary, .limit-drilldown summary { cursor: pointer; list-style: none; }
+                .score-drilldown summary::-webkit-details-marker, .limit-drilldown summary::-webkit-details-marker { display: none; }
+                .score-drilldown ul, .limit-drilldown ul { margin: 0.4rem 0 0; padding: 0 0 0 1.1rem; font-size: 0.75rem; color: #555; }
+                .score-drilldown li, .limit-drilldown li { margin: 0.1rem 0; }
                 .trend { font-weight: 600; }
                 .trend.worsening { color: #d64545; }
                 .trend.improving { color: #3ba55c; }
@@ -245,14 +277,15 @@ public class DashboardController : ControllerBase
                 <thead>
                   <tr>
                     <th data-col="0">Contact<span class="sort-indicator"></span></th>
-                    <th data-col="1">Outstanding<span class="sort-indicator"></span></th>
-                    <th data-col="2">Concentration<span class="sort-indicator"></span></th>
-                    <th data-col="3">Overdue<span class="sort-indicator"></span></th>
-                    <th data-col="4">Oldest Overdue (days)<span class="sort-indicator"></span></th>
-                    <th data-col="5">Risk<span class="sort-indicator"></span></th>
-                    <th data-col="6">Payment Trend<span class="sort-indicator"></span></th>
-                    <th data-col="7">Recommended Limit<span class="sort-indicator"></span></th>
-                    <th data-col="8">Companies House<span class="sort-indicator"></span></th>
+                    <th data-col="1">Score<span class="sort-indicator"></span></th>
+                    <th data-col="2">Outstanding<span class="sort-indicator"></span></th>
+                    <th data-col="3">Concentration<span class="sort-indicator"></span></th>
+                    <th data-col="4">Overdue<span class="sort-indicator"></span></th>
+                    <th data-col="5">Oldest Overdue (days)<span class="sort-indicator"></span></th>
+                    <th data-col="6">Risk<span class="sort-indicator"></span></th>
+                    <th data-col="7">Payment Trend<span class="sort-indicator"></span></th>
+                    <th data-col="8">Recommended Limit<span class="sort-indicator"></span></th>
+                    <th data-col="9">Companies House<span class="sort-indicator"></span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -398,6 +431,8 @@ public class DashboardController : ControllerBase
         > 10 => "medium",
         _ => "low"
     };
+
+    private static string GradeClass(string grade) => $"grade-{grade.ToLowerInvariant()}";
 
     /// <summary>Numeric rank for sorting the Companies House column: worse signals sort first.</summary>
     private static int CompaniesHouseSortRank(ContactCreditRisk r) => r switch

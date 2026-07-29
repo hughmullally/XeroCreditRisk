@@ -26,4 +26,11 @@ public interface ICreditRiskService
     /// than their risk tier reflects, or already exceeding their recommended credit limit.
     /// </summary>
     Task<List<EarlyWarningTrigger>> GetEarlyWarningsAsync(string tenantId);
+
+    /// <summary>
+    /// A single 0-100 score (higher = safer) and A-F grade per contact, combining overdue severity,
+    /// payment trend, concentration, credit limit breach, and Companies House signals into one
+    /// sortable number rather than several separate badges.
+    /// </summary>
+    Task<List<ContactCreditScore>> GetCreditScoresAsync(string tenantId);
 }

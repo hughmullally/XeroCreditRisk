@@ -103,4 +103,15 @@ public class XeroController : ControllerBase
         var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
         return Ok(warnings);
     }
+
+    /// <summary>GET /api/xero/credit-risk/score?tenantId={id} — a single 0-100 score and A-F grade per contact.</summary>
+    [HttpGet("credit-risk/score")]
+    public async Task<IActionResult> GetCreditScores([FromQuery] string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BadRequest("tenantId is required.");
+
+        var scores = await _creditRiskService.GetCreditScoresAsync(tenantId);
+        return Ok(scores);
+    }
 }

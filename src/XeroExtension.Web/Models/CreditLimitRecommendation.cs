@@ -10,6 +10,9 @@ public class CreditLimitRecommendation
     public decimal RecommendedCreditLimit { get; set; }
     public string Rationale { get; set; } = string.Empty;
 
+    /// <summary>Line-by-line breakdown of how RecommendedCreditLimit was derived, for drilldown display.</summary>
+    public List<string> Reasons { get; set; } = [];
+
     /// <summary>True when the contact currently owes more than the recommended limit — a signal to review before extending further credit.</summary>
     public bool ExceedsRecommendedLimit => CurrentOutstanding > RecommendedCreditLimit;
 }
