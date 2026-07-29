@@ -25,4 +25,7 @@ public interface IXeroService
 
     /// <summary>Looks up which contact a given invoice belongs to — used to resolve webhook INVOICE events back to a contact.</summary>
     Task<Guid?> GetInvoiceContactIdAsync(string tenantId, Guid invoiceId);
+
+    /// <summary>Sets a contact's Companies House Company Registration Number. Test/demo data seeding only.</summary>
+    Task SetContactCompanyNumberAsync(string tenantId, Guid contactId, string companyNumber);
 }

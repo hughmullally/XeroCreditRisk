@@ -139,6 +139,13 @@ public class XeroService : IXeroService
         return response?._Invoices?.FirstOrDefault()?.Contact.ContactID;
     }
 
+    public async Task SetContactCompanyNumberAsync(string tenantId, Guid contactId, string companyNumber)
+    {
+        var token = await GetValidTokenAsync();
+        var contact = new Contact { ContactID = contactId, CompanyNumber = companyNumber };
+        await _accountingApi.UpdateContactAsync(token.AccessToken, tenantId, contactId, new Contacts { _Contacts = [contact] });
+    }
+
     private async Task<XeroTokenSet> GetValidTokenAsync()
     {
         var tokenSet = await _tokenStore.GetAsync(UserId)

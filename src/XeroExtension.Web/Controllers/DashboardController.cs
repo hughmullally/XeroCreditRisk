@@ -112,16 +112,21 @@ public class DashboardController : ControllerBase
 
         var warningsSection = warnings.Count == 0 ? "" : $"""
             <div class="warnings">
-              <h2>⚠ Early Warnings ({warnings.Count} across {warningsByContact.Count} counterparties)</h2>
-              <div class="group-toggle">
-                <label><input type="radio" name="groupBy" value="contact" checked /> By Counterparty</label>
-                <label><input type="radio" name="groupBy" value="type" /> By Warning Type</label>
-              </div>
-              <div class="warnings-list" id="warningsByContact">
-                {warningGroupsByContact}
-              </div>
-              <div class="warnings-list" id="warningsByType" style="display:none">
-                {warningGroupsByType}
+              <h2>
+                ⚠ Early Warnings ({warnings.Count} across {warningsByContact.Count} counterparties)
+                <button id="warningsToggle" class="warnings-toggle-btn">▼ Collapse</button>
+              </h2>
+              <div id="warningsContent">
+                <div class="group-toggle">
+                  <label><input type="radio" name="groupBy" value="contact" checked /> By Counterparty</label>
+                  <label><input type="radio" name="groupBy" value="type" /> By Warning Type</label>
+                </div>
+                <div class="warnings-list" id="warningsByContact">
+                  {warningGroupsByContact}
+                </div>
+                <div class="warnings-list" id="warningsByType" style="display:none">
+                  {warningGroupsByType}
+                </div>
               </div>
             </div>
             """;
@@ -155,17 +160,21 @@ public class DashboardController : ControllerBase
 
             var concentrationCell = $"""<span class="concentration {ConcentrationClass(r.ConcentrationPercent)}">{r.ConcentrationPercent:0.#}%</span>""";
 
+            var trendSortValue = trendByContact.TryGetValue(r.ContactId, out var trendForSort) ? trendForSort.AverageDaysLate.ToString() : "";
+            var limitSortValue = recommendationByContact.TryGetValue(r.ContactId, out var recForSort) ? recForSort.RecommendedCreditLimit.ToString() : "";
+            var chSortValue = CompaniesHouseSortRank(r);
+
             return $"""
                 <tr data-contact-id="{r.ContactId}">
-                  <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
-                  <td>{r.OutstandingAmount:C}</td>
-                  <td>{concentrationCell}</td>
-                  <td>{r.OverdueAmount:C}</td>
-                  <td>{r.OldestOverdueDays}</td>
-                  <td><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
-                  <td>{trendCell}</td>
-                  <td>{limitCell}</td>
-                  <td>{chCell}</td>
+                  <td data-sort-value="{WebUtility.HtmlEncode(r.ContactName)}"><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
+                  <td data-sort-value="{r.OutstandingAmount}">{r.OutstandingAmount:C}</td>
+                  <td data-sort-value="{r.ConcentrationPercent}">{concentrationCell}</td>
+                  <td data-sort-value="{r.OverdueAmount}">{r.OverdueAmount:C}</td>
+                  <td data-sort-value="{r.OldestOverdueDays}">{r.OldestOverdueDays}</td>
+                  <td data-sort-value="{(int)r.RiskLevel}"><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
+                  <td data-sort-value="{trendSortValue}">{trendCell}</td>
+                  <td data-sort-value="{limitSortValue}">{limitCell}</td>
+                  <td data-sort-value="{chSortValue}">{chCell}</td>
                 </tr>
                 """;
         }));
@@ -182,6 +191,9 @@ public class DashboardController : ControllerBase
                 table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
                 th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid #eee; }
                 th { background: #fafafa; font-size: 0.8rem; text-transform: uppercase; color: #666; }
+                th[data-col] { cursor: pointer; user-select: none; }
+                th[data-col]:hover { color: #222; }
+                .sort-indicator { display: inline-block; width: 1em; color: #13b5ea; }
                 a { color: #13b5ea; text-decoration: none; }
                 a:hover { text-decoration: underline; }
                 .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: white; }
@@ -206,7 +218,9 @@ public class DashboardController : ControllerBase
                 .concentration.medium { color: #e0a030; }
                 .concentration.low { color: #888; font-weight: normal; }
                 .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
-                .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; }
+                .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; display: flex; align-items: center; justify-content: space-between; }
+                .warnings-toggle-btn { background: none; border: 1px solid #e0a030; color: #a6720f; border-radius: 4px; padding: 0.15rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
+                .warnings-toggle-btn:hover { background: #f5deb0; }
                 .warnings ul { margin: 0.3rem 0 0.6rem 1.2rem; padding: 0; }
                 .warnings li { margin: 0.2rem 0; }
                 .warnings-list { column-count: 2; column-gap: 2rem; }
@@ -229,7 +243,17 @@ public class DashboardController : ControllerBase
               {{warningsSection}}
               <table>
                 <thead>
-                  <tr><th>Contact</th><th>Outstanding</th><th>Concentration</th><th>Overdue</th><th>Oldest Overdue (days)</th><th>Risk</th><th>Payment Trend</th><th>Recommended Limit</th><th>Companies House</th></tr>
+                  <tr>
+                    <th data-col="0">Contact<span class="sort-indicator"></span></th>
+                    <th data-col="1">Outstanding<span class="sort-indicator"></span></th>
+                    <th data-col="2">Concentration<span class="sort-indicator"></span></th>
+                    <th data-col="3">Overdue<span class="sort-indicator"></span></th>
+                    <th data-col="4">Oldest Overdue (days)<span class="sort-indicator"></span></th>
+                    <th data-col="5">Risk<span class="sort-indicator"></span></th>
+                    <th data-col="6">Payment Trend<span class="sort-indicator"></span></th>
+                    <th data-col="7">Recommended Limit<span class="sort-indicator"></span></th>
+                    <th data-col="8">Companies House<span class="sort-indicator"></span></th>
+                  </tr>
                 </thead>
                 <tbody>
                   {{rows}}
@@ -286,6 +310,66 @@ public class DashboardController : ControllerBase
                     document.getElementById('warningsByType').style.display = e.target.value === 'type' ? '' : 'none';
                   });
                 });
+
+                // Collapse state survives the frequent auto-reloads (sessionStorage), so toggling it
+                // doesn't get undone the next time a webhook triggers a refresh.
+                const warningsToggle = document.getElementById('warningsToggle');
+                if (warningsToggle) {
+                  const warningsContent = document.getElementById('warningsContent');
+
+                  const setCollapsed = (collapsed) => {
+                    warningsContent.style.display = collapsed ? 'none' : '';
+                    warningsToggle.textContent = collapsed ? '▶ Expand' : '▼ Collapse';
+                    sessionStorage.setItem('warningsCollapsed', collapsed ? '1' : '0');
+                  };
+
+                  // Defaults to collapsed on a fresh session; an explicit prior choice (including
+                  // "expanded") is respected on subsequent reloads.
+                  setCollapsed(sessionStorage.getItem('warningsCollapsed') !== '0');
+
+                  warningsToggle.addEventListener('click', () => {
+                    setCollapsed(warningsContent.style.display !== 'none');
+                  });
+                }
+
+                // Column sorting: reads the raw value from each cell's data-sort-value (kept separate
+                // from the formatted display text), sorting missing/non-numeric values to the bottom
+                // regardless of direction, and numeric vs. text columns compared appropriately.
+                (() => {
+                  const tbody = document.querySelector('table tbody');
+                  const headers = document.querySelectorAll('th[data-col]');
+                  let sortState = { col: null, dir: 1 };
+
+                  headers.forEach(th => {
+                    th.addEventListener('click', () => {
+                      const col = parseInt(th.dataset.col, 10);
+                      const dir = (sortState.col === col) ? -sortState.dir : 1;
+                      sortState = { col, dir };
+
+                      headers.forEach(h => h.querySelector('.sort-indicator').textContent = '');
+                      th.querySelector('.sort-indicator').textContent = dir === 1 ? '▲' : '▼';
+
+                      const rows = Array.from(tbody.querySelectorAll('tr'));
+                      rows.sort((a, b) => {
+                        const aCell = a.children[col];
+                        const bCell = b.children[col];
+                        const aRaw = aCell.dataset.sortValue ?? aCell.textContent.trim();
+                        const bRaw = bCell.dataset.sortValue ?? bCell.textContent.trim();
+
+                        const aNum = parseFloat(aRaw);
+                        const bNum = parseFloat(bRaw);
+                        const aIsNum = aRaw !== '' && !isNaN(aNum);
+                        const bIsNum = bRaw !== '' && !isNaN(bNum);
+
+                        if (aIsNum && bIsNum) return (aNum - bNum) * dir;
+                        if (aIsNum !== bIsNum) return aIsNum ? -1 : 1;
+                        return aRaw.localeCompare(bRaw) * dir;
+                      });
+
+                      rows.forEach(row => tbody.appendChild(row));
+                    });
+                  });
+                })();
               </script>
             </body>
             </html>
@@ -313,6 +397,15 @@ public class DashboardController : ControllerBase
         > 25 => "high",
         > 10 => "medium",
         _ => "low"
+    };
+
+    /// <summary>Numeric rank for sorting the Companies House column: worse signals sort first.</summary>
+    private static int CompaniesHouseSortRank(ContactCreditRisk r) => r switch
+    {
+        { CompaniesHouseDistressed: true } => 0,
+        { CompaniesHouseOverdueFilings: true } => 1,
+        { CompaniesHouseStatus: not null } => 2,
+        _ => 3
     };
 
     private static string WarningTypeLabel(EarlyWarningType type) => type switch
