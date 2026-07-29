@@ -200,9 +200,9 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
 
                 var reasons = new List<string>
                 {
-                    $"Average invoice amount: {avgInvoiceAmount:C}",
+                    $"Average invoice amount: £{avgInvoiceAmount:N2}",
                     $"Credit score {scoreValue}/100 → multiplier {multiplier:0.00}×",
-                    $"{avgInvoiceAmount:C} × {multiplier:0.00} = {avgInvoiceAmount * (decimal)multiplier:C}, rounded up to nearest £100 → {recommendedLimit:C}"
+                    $"£{avgInvoiceAmount:N2} × {multiplier:0.00} = £{avgInvoiceAmount * (decimal)multiplier:N2}, rounded up to nearest £100 → £{recommendedLimit:N2}"
                 };
 
                 return new CreditLimitRecommendation
@@ -213,7 +213,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     CurrentOutstanding = risk?.OutstandingAmount ?? 0,
                     RiskLevel = risk?.RiskLevel ?? CreditRiskLevel.Current,
                     RecommendedCreditLimit = recommendedLimit,
-                    Rationale = $"Avg invoice {avgInvoiceAmount:C}, credit score {scoreValue}/100 (×{multiplier:0.00}).",
+                    Rationale = $"Avg invoice £{avgInvoiceAmount:N2}, credit score {scoreValue}/100 (×{multiplier:0.00}).",
                     Reasons = reasons
                 };
             })
@@ -313,7 +313,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                 ContactId = rec.ContactId,
                 ContactName = rec.ContactName,
                 Type = EarlyWarningType.ExceedsRecommendedLimit,
-                Message = $"Currently owes {rec.CurrentOutstanding:C}, above the recommended {rec.RecommendedCreditLimit:C} limit."
+                Message = $"Currently owes £{rec.CurrentOutstanding:N2}, above the recommended £{rec.RecommendedCreditLimit:N2} limit."
             });
         }
 

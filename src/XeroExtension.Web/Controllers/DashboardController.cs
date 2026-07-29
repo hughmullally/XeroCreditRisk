@@ -144,7 +144,7 @@ public class DashboardController : ControllerBase
                     <details class="limit-drilldown">
                       <summary>
                         <span class="{(rec.ExceedsRecommendedLimit ? "limit-exceeded" : "")}">
-                          {rec.RecommendedCreditLimit:C}{(rec.ExceedsRecommendedLimit ? " ⚠" : "")}
+                          £{rec.RecommendedCreditLimit:N2}{(rec.ExceedsRecommendedLimit ? " ⚠" : "")}
                         </span>
                       </summary>
                       <ul>
@@ -189,9 +189,9 @@ public class DashboardController : ControllerBase
                 <tr data-contact-id="{r.ContactId}">
                   <td data-sort-value="{WebUtility.HtmlEncode(r.ContactName)}"><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
                   <td data-sort-value="{scoreSortValue}">{scoreCell}</td>
-                  <td data-sort-value="{r.OutstandingAmount}">{r.OutstandingAmount:C}</td>
+                  <td data-sort-value="{r.OutstandingAmount}">£{r.OutstandingAmount:N2}</td>
                   <td data-sort-value="{r.ConcentrationPercent}">{concentrationCell}</td>
-                  <td data-sort-value="{r.OverdueAmount}">{r.OverdueAmount:C}</td>
+                  <td data-sort-value="{r.OverdueAmount}">£{r.OverdueAmount:N2}</td>
                   <td data-sort-value="{r.OldestOverdueDays}">{r.OldestOverdueDays}</td>
                   <td data-sort-value="{(int)r.RiskLevel}"><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
                   <td data-sort-value="{trendSortValue}">{trendCell}</td>

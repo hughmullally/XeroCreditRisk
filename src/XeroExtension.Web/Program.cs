@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Serialization;
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Diagnostics;
 using Xero.NetStandard.OAuth2.Client;
 using Xero.NetStandard.OAuth2.Config;
@@ -16,8 +18,23 @@ var xeroConfig = builder.Configuration
 
 builder.Services.AddSingleton(xeroConfig);
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
-builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<ITokenStore, InMemoryTokenStore>();
+
+// Token store: blob-backed (survives restarts/redeploys) when Storage:BlobServiceUri is
+// configured (set on the Azure Web App), otherwise in-memory for local dev.
+var blobServiceUri = builder.Configuration["Storage:BlobServiceUri"];
+if (!string.IsNullOrWhiteSpace(blobServiceUri))
+{
+    var containerClient = new BlobContainerClient(
+        new Uri($"{blobServiceUri.TrimEnd('/')}/tokens"), new DefaultAzureCredential());
+    builder.Services.AddSingleton(containerClient);
+    builder.Services.AddSingleton<ITokenStore, BlobTokenStore>();
+}
+else
+{
+    builder.Services.AddMemoryCache();
+    builder.Services.AddSingleton<ITokenStore, InMemoryTokenStore>();
+}
+
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddScoped<ICreditRiskService, CreditRiskService>();
 builder.Services.AddSingleton<DashboardNotifier>();
