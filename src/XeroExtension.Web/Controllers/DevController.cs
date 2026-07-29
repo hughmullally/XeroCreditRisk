@@ -40,11 +40,10 @@ public class DevController : ControllerBase
         {
             var count = invoiceCounts.GetValueOrDefault(c.ContactID!.Value, 0);
             return $"""
-                <tr>
-                  <td>{WebUtility.HtmlEncode(c.Name)}</td>
-                  <td>{count}</td>
-                  <td><input type="number" class="seed-count" data-contact-id="{c.ContactID}" value="0" min="0" max="50" /></td>
-                </tr>
+                <div class="contact-row">
+                  <label class="contact-label" title="{WebUtility.HtmlEncode(c.Name)}">{WebUtility.HtmlEncode(c.Name)} <span class="current-count">({count})</span></label>
+                  <input type="number" class="seed-count" data-contact-id="{c.ContactID}" value="0" min="0" max="50" />
+                </div>
                 """;
         }));
 
@@ -60,10 +59,11 @@ public class DevController : ControllerBase
                 .tenant-form { margin-bottom: 1rem; font-size: 0.85rem; }
                 .tenant-form input { padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px; width: 320px; }
                 .tenant-form button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; background: #eee; cursor: pointer; }
-                table { border-collapse: collapse; width: 100%; max-width: 700px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-                th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid #eee; }
-                th { background: #fafafa; font-size: 0.8rem; text-transform: uppercase; color: #666; }
-                input.seed-count { width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
+                .contact-grid { column-count: 3; column-gap: 1.5rem; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px; padding: 0.5rem 1rem; }
+                .contact-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.15rem 0; border-bottom: 1px solid #eee; break-inside: avoid; }
+                .contact-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
+                .current-count { color: #999; }
+                input.seed-count { width: 48px; padding: 0.15rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; flex-shrink: 0; }
                 button#seedAllBtn { margin-top: 1.2rem; padding: 0.6rem 1.2rem; background: #13b5ea; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
                 button#seedAllBtn:disabled { background: #aaa; cursor: default; }
                 button#seedAllBtn:hover:not(:disabled) { background: #0f9fcf; }
@@ -78,14 +78,9 @@ public class DevController : ControllerBase
                 <button type="submit">Load</button>
               </form>
 
-              <table>
-                <thead>
-                  <tr><th>Contact</th><th>Current Invoices</th><th>Invoices to Seed</th></tr>
-                </thead>
-                <tbody>
-                  {{rows}}
-                </tbody>
-              </table>
+              <div class="contact-grid">
+                {{rows}}
+              </div>
 
               <button id="seedAllBtn">Seed All</button>
               <div id="result"></div>
