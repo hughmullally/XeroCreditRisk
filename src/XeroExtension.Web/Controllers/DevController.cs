@@ -186,7 +186,7 @@ public class DevController : ControllerBase
             </html>
             """;
 
-        return Content(html, "text/html");
+        return Content(html, "text/html; charset=utf-8");
     }
 
     public record SeedInvoiceRequestItem(string ContactId, int Count);

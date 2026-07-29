@@ -67,7 +67,7 @@ public class DashboardController : ControllerBase
     public async Task<ContentResult> Index([FromQuery] string tenantId)
     {
         if (string.IsNullOrWhiteSpace(tenantId))
-            return Content("<p>Missing required query parameter: tenantId</p>", "text/html");
+            return Content("<p>Missing required query parameter: tenantId</p>", "text/html; charset=utf-8");
 
         var risk = await _creditRiskService.GetContactRiskAsync(tenantId);
         var trends = await _creditRiskService.GetPaymentTrendAsync(tenantId);
@@ -408,7 +408,7 @@ public class DashboardController : ControllerBase
             </html>
             """;
 
-        return Content(html, "text/html");
+        return Content(html, "text/html; charset=utf-8");
     }
 
     private static string TrendLabel(double delta) => delta switch

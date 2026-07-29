@@ -6,6 +6,10 @@ obj/
 .vs/
 *.swp
 
+## Local deploy artifacts (produced by publishing/zipping for Azure deploy)
+/publish/
+/publish.zip
+
 ## User secrets / local config (never commit real credentials)
 appsettings.Development.json
 appsettings.Local.json
