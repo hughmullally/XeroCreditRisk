@@ -13,6 +13,17 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
         [CreditRiskLevel.Current] = "Risk: Current"
     };
 
+    // This service is Scoped (one instance per HTTP request), so caching here is safely bounded to a
+    // single dashboard load — without it, GetCreditLimitRecommendationsAsync and GetEarlyWarningsAsync
+    // each independently re-run GetContactRiskAsync (and its Companies House lookups) from scratch,
+    // tripling the external API calls on every single page render.
+    private List<Invoice>? _cachedInvoices;
+    private List<ContactCreditRisk>? _cachedRisk;
+    private List<ContactPaymentTrend>? _cachedTrend;
+
+    private async Task<List<Invoice>> GetInvoicesCachedAsync(string tenantId) =>
+        _cachedInvoices ??= await xeroService.GetInvoicesAsync(tenantId);
+
     public async Task SyncRiskGroupsToXeroAsync(string tenantId)
     {
         var risk = await GetContactRiskAsync(tenantId);
@@ -27,7 +38,10 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
 
     public async Task<List<ContactCreditRisk>> GetContactRiskAsync(string tenantId)
     {
-        var invoices = await xeroService.GetInvoicesAsync(tenantId);
+        if (_cachedRisk is not null)
+            return _cachedRisk;
+
+        var invoices = await GetInvoicesCachedAsync(tenantId);
         var now = DateTime.UtcNow;
 
         var outstanding = invoices.Where(i =>
@@ -37,7 +51,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
 
         var grouped = outstanding.GroupBy(i => i.Contact.ContactID).ToList();
         if (grouped.Count == 0)
-            return [];
+            return _cachedRisk = [];
 
         var contacts = await xeroService.GetContactsAsync(tenantId);
         var companyNumberByContact = contacts
@@ -103,14 +117,18 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                 r.ConcentrationPercent = Math.Round(r.OutstandingAmount / totalOutstanding * 100, 1);
         }
 
-        return results
+        _cachedRisk = results
             .OrderByDescending(r => r.OldestOverdueDays)
             .ToList();
+        return _cachedRisk;
     }
 
     public async Task<List<ContactPaymentTrend>> GetPaymentTrendAsync(string tenantId)
     {
-        var invoices = await xeroService.GetInvoicesAsync(tenantId);
+        if (_cachedTrend is not null)
+            return _cachedTrend;
+
+        var invoices = await GetInvoicesCachedAsync(tenantId);
 
         var paid = invoices.Where(i =>
             i.Type == Invoice.TypeEnum.ACCREC &&
@@ -118,7 +136,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
             i.DueDate is not null &&
             i.FullyPaidOnDate is not null);
 
-        return paid
+        _cachedTrend = paid
             .GroupBy(i => i.Contact.ContactID)
             .Select(g =>
             {
@@ -150,11 +168,12 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
             })
             .OrderByDescending(r => r.TrendDelta)
             .ToList();
+        return _cachedTrend;
     }
 
     public async Task<List<CreditLimitRecommendation>> GetCreditLimitRecommendationsAsync(string tenantId)
     {
-        var invoices = await xeroService.GetInvoicesAsync(tenantId);
+        var invoices = await GetInvoicesCachedAsync(tenantId);
         var riskByContact = (await GetContactRiskAsync(tenantId)).ToDictionary(r => r.ContactId);
         var trendByContact = (await GetPaymentTrendAsync(tenantId)).ToDictionary(t => t.ContactId);
 

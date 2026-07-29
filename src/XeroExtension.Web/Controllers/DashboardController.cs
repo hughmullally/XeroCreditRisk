@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using XeroExtension.Web.Models;
 using XeroExtension.Web.Services;
@@ -27,8 +28,8 @@ public class DashboardController : ControllerBase
         Response.Headers.ContentType = "text/event-stream";
         Response.Headers.CacheControl = "no-cache";
 
-        var changed = new TaskCompletionSource();
-        void OnChanged() => changed.TrySetResult();
+        var changed = new TaskCompletionSource<IReadOnlyList<string>>();
+        void OnChanged(IReadOnlyList<string> contactIds) => changed.TrySetResult(contactIds);
         _notifier.Changed += OnChanged;
 
         try
@@ -39,8 +40,9 @@ public class DashboardController : ControllerBase
 
                 if (finished == changed.Task)
                 {
-                    await Response.WriteAsync("data: changed\n\n", cancellationToken);
-                    changed = new TaskCompletionSource();
+                    var payload = JsonSerializer.Serialize(new { contactIds = changed.Task.Result });
+                    await Response.WriteAsync($"data: {payload}\n\n", cancellationToken);
+                    changed = new TaskCompletionSource<IReadOnlyList<string>>();
                 }
                 else
                 {
@@ -154,7 +156,7 @@ public class DashboardController : ControllerBase
             var concentrationCell = $"""<span class="concentration {ConcentrationClass(r.ConcentrationPercent)}">{r.ConcentrationPercent:0.#}%</span>""";
 
             return $"""
-                <tr>
+                <tr data-contact-id="{r.ContactId}">
                   <td><a href="https://go.xero.com/Contacts/Edit.aspx?contactID={r.ContactId}" target="_blank">{WebUtility.HtmlEncode(r.ContactName)}</a></td>
                   <td>{r.OutstandingAmount:C}</td>
                   <td>{concentrationCell}</td>
@@ -218,6 +220,8 @@ public class DashboardController : ControllerBase
                 .live-status.connecting { background: #eee; color: #888; }
                 .live-status.live { background: #e6f7ec; color: #3ba55c; }
                 .live-status.disconnected { background: #fbe7e7; color: #d64545; }
+                tbody tr { transition: background-color 1s ease; }
+                tbody tr.highlight-updated { background-color: #fff3b0; }
               </style>
             </head>
             <body>
@@ -233,6 +237,31 @@ public class DashboardController : ControllerBase
               </table>
 
               <script>
+                // Apply any highlight requested by the reload that just happened, then keep the
+                // remaining time ticking down (the highlight window survives the full page reload
+                // via sessionStorage, since the SSE connection itself doesn't).
+                (() => {
+                  const until = parseInt(sessionStorage.getItem('highlightUntil') || '0', 10);
+                  const remaining = until - Date.now();
+                  if (remaining <= 0) {
+                    sessionStorage.removeItem('highlightUntil');
+                    sessionStorage.removeItem('highlightContactIds');
+                    return;
+                  }
+
+                  const ids = JSON.parse(sessionStorage.getItem('highlightContactIds') || '[]');
+                  ids.forEach(id => {
+                    const row = document.querySelector(`tr[data-contact-id="${id}"]`);
+                    if (row) row.classList.add('highlight-updated');
+                  });
+
+                  setTimeout(() => {
+                    document.querySelectorAll('.highlight-updated').forEach(row => row.classList.remove('highlight-updated'));
+                    sessionStorage.removeItem('highlightUntil');
+                    sessionStorage.removeItem('highlightContactIds');
+                  }, remaining);
+                })();
+
                 const liveStatus = document.getElementById('liveStatus');
                 const source = new EventSource('/dashboard/events');
 
@@ -244,7 +273,12 @@ public class DashboardController : ControllerBase
                   liveStatus.textContent = '🔴 Disconnected';
                   liveStatus.className = 'live-status disconnected';
                 };
-                source.onmessage = () => location.reload();
+                source.onmessage = (e) => {
+                  const data = JSON.parse(e.data);
+                  sessionStorage.setItem('highlightContactIds', JSON.stringify(data.contactIds || []));
+                  sessionStorage.setItem('highlightUntil', String(Date.now() + 15000));
+                  location.reload();
+                };
 
                 document.querySelectorAll('input[name="groupBy"]').forEach(radio => {
                   radio.addEventListener('change', (e) => {

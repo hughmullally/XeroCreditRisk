@@ -95,6 +95,16 @@ public class XeroService : IXeroService
             .ToList();
     }
 
+    public async Task<Dictionary<Guid, int>> GetSalesInvoiceCountsByContactAsync(string tenantId)
+    {
+        var invoices = await GetInvoicesAsync(tenantId);
+
+        return invoices
+            .Where(i => i.Type == Invoice.TypeEnum.ACCREC && i.Contact.ContactID.HasValue)
+            .GroupBy(i => i.Contact.ContactID!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
     public async Task<Guid> CreateSalesInvoiceAsync(string tenantId, Guid contactId, DateTime dueDate, decimal amount, string description)
     {
         var token = await GetValidTokenAsync();
@@ -120,6 +130,13 @@ public class XeroService : IXeroService
 
         var result = await _accountingApi.CreateInvoicesAsync(token.AccessToken, tenantId, new Invoices { _Invoices = [invoice] });
         return result._Invoices![0].InvoiceID!.Value;
+    }
+
+    public async Task<Guid?> GetInvoiceContactIdAsync(string tenantId, Guid invoiceId)
+    {
+        var token = await GetValidTokenAsync();
+        var response = await _accountingApi.GetInvoicesAsync(token.AccessToken, tenantId, iDs: [invoiceId]);
+        return response?._Invoices?.FirstOrDefault()?.Contact.ContactID;
     }
 
     private async Task<XeroTokenSet> GetValidTokenAsync()

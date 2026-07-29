@@ -17,6 +17,12 @@ public interface IXeroService
     /// <summary>Contacts that have no ACCREC (sales) invoices at all yet.</summary>
     Task<List<Contact>> GetContactsWithoutSalesInvoicesAsync(string tenantId);
 
+    /// <summary>Count of ACCREC (sales) invoices per contact, for contacts that have at least one.</summary>
+    Task<Dictionary<Guid, int>> GetSalesInvoiceCountsByContactAsync(string tenantId);
+
     /// <summary>Creates and authorises a single sales invoice. Test/demo data seeding only.</summary>
     Task<Guid> CreateSalesInvoiceAsync(string tenantId, Guid contactId, DateTime dueDate, decimal amount, string description);
+
+    /// <summary>Looks up which contact a given invoice belongs to — used to resolve webhook INVOICE events back to a contact.</summary>
+    Task<Guid?> GetInvoiceContactIdAsync(string tenantId, Guid invoiceId);
 }

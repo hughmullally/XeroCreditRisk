@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using XeroExtension.Web.Services;
 
@@ -7,6 +8,8 @@ namespace XeroExtension.Web.Controllers;
 [Route("dev")]
 public class DevController : ControllerBase
 {
+    private const string DefaultTenantId = "e5be2af3-6963-44b0-9f7e-855921499c72";
+
     private readonly IXeroService _xeroService;
 
     // Contacts that aren't realistic customers to invoice (the org's own name, tax authority, the org owner).
@@ -15,68 +18,121 @@ public class DevController : ControllerBase
         "HMRC", "Xero", "Hugh Mullally"
     };
 
-    // Cycled across candidates to spread them across risk tiers (High/Medium/Low/Current/not-yet-due).
+    // Cycled across invoices created in a batch to spread them across risk tiers (High/Medium/Low/Current/not-yet-due).
     private static readonly int[] DueDateOffsetDays = [-75, -45, -20, -5, 10, 25];
 
     public DevController(IXeroService xeroService) => _xeroService = xeroService;
 
-    /// <summary>GET /dev — a small form for triggering test-invoice seeding without needing curl.</summary>
+    /// <summary>GET /dev?tenantId={id} — a grid of every counterparty with an editable "invoices to seed" count each.</summary>
     [HttpGet]
-    public ContentResult Index()
+    public async Task<ContentResult> Index([FromQuery] string? tenantId)
     {
-        const string html = """
+        var effectiveTenantId = string.IsNullOrWhiteSpace(tenantId) ? DefaultTenantId : tenantId;
+
+        var contacts = (await _xeroService.GetContactsAsync(effectiveTenantId))
+            .Where(c => c.ContactID.HasValue && !ExcludedNames.Contains(c.Name))
+            .OrderBy(c => c.Name)
+            .ToList();
+
+        var invoiceCounts = await _xeroService.GetSalesInvoiceCountsByContactAsync(effectiveTenantId);
+
+        var rows = string.Join("\n", contacts.Select(c =>
+        {
+            var count = invoiceCounts.GetValueOrDefault(c.ContactID!.Value, 0);
+            return $"""
+                <tr>
+                  <td>{WebUtility.HtmlEncode(c.Name)}</td>
+                  <td>{count}</td>
+                  <td><input type="number" class="seed-count" data-contact-id="{c.ContactID}" value="0" min="0" max="50" /></td>
+                </tr>
+                """;
+        }));
+
+        var html = $$"""
             <!DOCTYPE html>
             <html>
             <head>
               <meta charset="utf-8" />
               <title>Dev Tools</title>
               <style>
-                body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem; background: #f7f7f8; color: #222; max-width: 500px; }
+                body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem; background: #f7f7f8; color: #222; }
                 h1 { font-size: 1.4rem; }
-                label { display: block; margin-top: 1rem; font-size: 0.85rem; font-weight: 600; color: #666; }
-                input { width: 100%; box-sizing: border-box; padding: 0.5rem; margin-top: 0.3rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
-                button { margin-top: 1.2rem; padding: 0.6rem 1.2rem; background: #13b5ea; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
-                button:disabled { background: #aaa; cursor: default; }
-                button:hover:not(:disabled) { background: #0f9fcf; }
-                #result { margin-top: 1.5rem; padding: 1rem; background: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; display: none; }
+                .tenant-form { margin-bottom: 1rem; font-size: 0.85rem; }
+                .tenant-form input { padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px; width: 320px; }
+                .tenant-form button { padding: 0.4rem 0.8rem; border: none; border-radius: 4px; background: #eee; cursor: pointer; }
+                table { border-collapse: collapse; width: 100%; max-width: 700px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+                th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid #eee; }
+                th { background: #fafafa; font-size: 0.8rem; text-transform: uppercase; color: #666; }
+                input.seed-count { width: 70px; padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
+                button#seedAllBtn { margin-top: 1.2rem; padding: 0.6rem 1.2rem; background: #13b5ea; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+                button#seedAllBtn:disabled { background: #aaa; cursor: default; }
+                button#seedAllBtn:hover:not(:disabled) { background: #0f9fcf; }
+                #result { margin-top: 1.5rem; padding: 1rem; background: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; display: none; max-width: 700px; max-height: 400px; overflow: auto; }
               </style>
             </head>
             <body>
               <h1>Seed Test Invoices</h1>
-              <p>Creates real sales invoices in Xero for contacts that don't have any yet.</p>
-              <form id="seedForm">
+              <form class="tenant-form" method="get" action="/dev">
                 <label for="tenantId">Tenant ID</label>
-                <input type="text" id="tenantId" value="e5be2af3-6963-44b0-9f7e-855921499c72" required />
-
-                <label for="count">Number of contacts to seed</label>
-                <input type="number" id="count" value="8" min="1" max="30" />
-
-                <button type="submit" id="submitBtn">Create invoices</button>
+                <input type="text" id="tenantId" name="tenantId" value="{{effectiveTenantId}}" />
+                <button type="submit">Load</button>
               </form>
+
+              <table>
+                <thead>
+                  <tr><th>Contact</th><th>Current Invoices</th><th>Invoices to Seed</th></tr>
+                </thead>
+                <tbody>
+                  {{rows}}
+                </tbody>
+              </table>
+
+              <button id="seedAllBtn">Seed All</button>
               <div id="result"></div>
 
               <script>
-                document.getElementById('seedForm').addEventListener('submit', async (e) => {
-                  e.preventDefault();
-                  const btn = document.getElementById('submitBtn');
+                // Show the result of the seeding that just triggered this reload (the reload itself
+                // is what refreshes the "Current Invoices" counts, since they're rendered server-side).
+                (() => {
+                  const pending = sessionStorage.getItem('seedResult');
+                  if (!pending) return;
+                  sessionStorage.removeItem('seedResult');
                   const result = document.getElementById('result');
-                  const tenantId = document.getElementById('tenantId').value;
-                  const count = document.getElementById('count').value;
+                  result.style.display = 'block';
+                  result.textContent = pending;
+                })();
 
+                document.getElementById('seedAllBtn').addEventListener('click', async () => {
+                  const inputs = Array.from(document.querySelectorAll('.seed-count'));
+                  const items = inputs
+                    .map(input => ({ contactId: input.dataset.contactId, count: parseInt(input.value, 10) || 0 }))
+                    .filter(item => item.count > 0);
+
+                  if (items.length === 0) {
+                    alert('Enter a count greater than 0 for at least one counterparty.');
+                    return;
+                  }
+
+                  const btn = document.getElementById('seedAllBtn');
+                  const result = document.getElementById('result');
                   btn.disabled = true;
-                  btn.textContent = 'Creating...';
+                  btn.textContent = 'Seeding...';
                   result.style.display = 'block';
                   result.textContent = 'Working...';
 
                   try {
-                    const res = await fetch(`/dev/seed-invoices?tenantId=${encodeURIComponent(tenantId)}&count=${encodeURIComponent(count)}`, { method: 'POST' });
+                    const res = await fetch(`/dev/seed-invoices-bulk?tenantId={{effectiveTenantId}}`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(items)
+                    });
                     const data = await res.json();
-                    result.textContent = JSON.stringify(data, null, 2);
+                    sessionStorage.setItem('seedResult', JSON.stringify(data, null, 2));
+                    location.reload();
                   } catch (err) {
                     result.textContent = 'Error: ' + err;
-                  } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Create invoices';
+                    btn.textContent = 'Seed All';
                   }
                 });
               </script>
@@ -87,34 +143,42 @@ public class DevController : ControllerBase
         return Content(html, "text/html");
     }
 
+    public record SeedInvoiceRequestItem(string ContactId, int Count);
+
     /// <summary>
-    /// POST /dev/seed-invoices?tenantId={id}&amp;count={n} — creates test sales invoices for contacts
-    /// that don't have any yet, so more of the Demo Company shows up in the credit risk views.
+    /// POST /dev/seed-invoices-bulk?tenantId={id} — creates the requested number of test sales
+    /// invoices per contact, spreading due dates across a fixed offset pattern for variety.
     /// </summary>
-    [HttpPost("seed-invoices")]
-    public async Task<IActionResult> SeedInvoices([FromQuery] string tenantId, [FromQuery] int count = 8)
+    [HttpPost("seed-invoices-bulk")]
+    public async Task<IActionResult> SeedInvoicesBulk([FromQuery] string tenantId, [FromBody] List<SeedInvoiceRequestItem> items)
     {
         if (string.IsNullOrWhiteSpace(tenantId))
             return BadRequest("tenantId is required.");
 
-        var candidates = (await _xeroService.GetContactsWithoutSalesInvoicesAsync(tenantId))
-            .Where(c => !ExcludedNames.Contains(c.Name))
-            .Take(count)
-            .ToList();
+        var contacts = (await _xeroService.GetContactsAsync(tenantId))
+            .Where(c => c.ContactID.HasValue)
+            .ToDictionary(c => c.ContactID!.Value.ToString()!, c => c);
 
         var now = DateTime.UtcNow;
         var created = new List<object>();
+        var index = 0;
 
-        for (var i = 0; i < candidates.Count; i++)
+        foreach (var item in items.Where(i => i.Count > 0))
         {
-            var contact = candidates[i];
-            var dueDate = now.AddDays(DueDateOffsetDays[i % DueDateOffsetDays.Length]);
-            var amount = 150 + i * 137 % 900;
+            if (!contacts.TryGetValue(item.ContactId, out var contact))
+                continue;
 
-            var invoiceId = await _xeroService.CreateSalesInvoiceAsync(
-                tenantId, contact.ContactID!.Value, dueDate, amount, $"Test invoice for {contact.Name}");
+            for (var i = 0; i < item.Count; i++)
+            {
+                var dueDate = now.AddDays(DueDateOffsetDays[index % DueDateOffsetDays.Length]);
+                var amount = 150 + index * 137 % 900;
 
-            created.Add(new { contactId = contact.ContactID, contact.Name, dueDate, amount, invoiceId });
+                var invoiceId = await _xeroService.CreateSalesInvoiceAsync(
+                    tenantId, contact.ContactID!.Value, dueDate, amount, $"Test invoice for {contact.Name}");
+
+                created.Add(new { contactId = item.ContactId, contact.Name, dueDate, amount, invoiceId });
+                index++;
+            }
         }
 
         return Ok(new { message = $"Created {created.Count} test invoices.", invoices = created });
