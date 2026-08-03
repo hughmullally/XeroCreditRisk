@@ -78,6 +78,10 @@ public class DashboardController : ControllerBase
         var scores = await _creditRiskService.GetCreditScoresAsync(tenantId);
         var scoreByContact = scores.ToDictionary(s => s.ContactId);
 
+        var totalOutstandingInvoices = risk.Sum(r => r.OutstandingInvoiceCount);
+        var totalOverdueInvoices = risk.Sum(r => r.OverdueInvoiceCount);
+        var benchmarkSection = totalOutstandingInvoices == 0 ? "" : BuildBenchmarkSection(totalOverdueInvoices, totalOutstandingInvoices);
+
         var warningsByContact = warnings
             .GroupBy(w => new { w.ContactId, w.ContactName })
             .OrderByDescending(g => g.Count())
@@ -333,6 +337,23 @@ public class DashboardController : ControllerBase
                 .concentration.high { color: var(--critical); }
                 .concentration.medium { color: var(--serious); }
                 .concentration.low { color: var(--text-muted); font-weight: 500; }
+                .benchmark {
+                  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                  padding: 1.1rem 1.5rem; margin-bottom: 1.75rem; box-shadow: var(--shadow);
+                  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+                }
+                .benchmark-figure { display: flex; align-items: baseline; gap: 0.6rem; }
+                .benchmark-value { font-size: 1.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+                .benchmark-value.good { color: var(--good); }
+                .benchmark-value.critical { color: var(--critical); }
+                .benchmark-value.muted { color: var(--text-muted); }
+                .benchmark-label { font-size: 0.85rem; color: var(--text-secondary); }
+                .benchmark-compare { font-size: 0.85rem; color: var(--text-secondary); }
+                .benchmark-verdict { font-weight: 700; margin-left: 0.4rem; }
+                .benchmark-verdict.good { color: var(--good); }
+                .benchmark-verdict.critical { color: var(--critical); }
+                .benchmark-verdict.muted { color: var(--text-muted); }
+                .benchmark-source { font-size: 0.72rem; color: var(--text-muted); width: 100%; }
                 .warnings {
                   background: color-mix(in srgb, var(--warning) 12%, var(--surface));
                   border: 1px solid var(--border); border-left: 5px solid var(--warning);
@@ -372,6 +393,7 @@ public class DashboardController : ControllerBase
                 </div>
               </header>
               <main class="page-content">
+              {{benchmarkSection}}
               {{warningsSection}}
               <div class="table-card">
                 <table>
@@ -556,4 +578,34 @@ public class DashboardController : ControllerBase
         EarlyWarningType.ConcentrationRisk => "Concentration Risk",
         _ => type.ToString()
     };
+
+    /// <summary>UK SME invoices currently overdue, per Sage/CEBR analysis of 1.2M+ real invoices (2026) — see docs/uk-sme-late-payment-cost-research.md.</summary>
+    private const decimal NationalOverdueInvoicePercent = 49m;
+
+    private static string BuildBenchmarkSection(int overdueInvoices, int outstandingInvoices)
+    {
+        var orgPercent = Math.Round((decimal)overdueInvoices / outstandingInvoices * 100, 1);
+        var diff = orgPercent - NationalOverdueInvoicePercent;
+
+        var (statusClass, verdict) = diff switch
+        {
+            < -1 => ("good", "✓ Better than the UK average"),
+            > 1 => ("critical", "⚠ Worse than the UK average"),
+            _ => ("muted", "— About average")
+        };
+
+        return $"""
+            <div class="benchmark">
+              <div class="benchmark-figure">
+                <span class="benchmark-value {statusClass}">{orgPercent:0.#}%</span>
+                <span class="benchmark-label">of your outstanding invoices are currently overdue</span>
+              </div>
+              <div class="benchmark-compare">
+                UK SME average: <strong>{NationalOverdueInvoicePercent:0}%</strong>
+                <span class="benchmark-verdict {statusClass}">{verdict}</span>
+              </div>
+              <div class="benchmark-source">Source: Sage/CEBR analysis of 1.2M+ UK invoices (2026)</div>
+            </div>
+            """;
+    }
 }
