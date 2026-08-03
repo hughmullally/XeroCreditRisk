@@ -148,7 +148,12 @@ public class DashboardController : ControllerBase
         var rows = string.Join("\n", risk.Select(r =>
         {
             var trendCell = trendByContact.TryGetValue(r.ContactId, out var trend)
-                ? $"""<span class="trend {TrendClass(trend.TrendDelta)}">{Math.Round(trend.AverageDaysLate, 1)} days avg {TrendLabel(trend.TrendDelta)}</span>"""
+                ? $"""
+                    <div class="trend-cell">
+                      <span class="trend {TrendClass(trend.TrendDelta)}">{Math.Round(trend.AverageDaysLate, 1)} days avg {TrendLabel(trend.TrendDelta)}</span>
+                      {BuildSparkline(trend, TrendClass(trend.TrendDelta))}
+                    </div>
+                    """
                 : """<span class="muted">No payment history</span>""";
 
             var limitCell = recommendationByContact.TryGetValue(r.ContactId, out var rec)
@@ -351,6 +356,16 @@ public class DashboardController : ControllerBase
                 .trend.worsening { color: var(--critical); }
                 .trend.improving { color: var(--good); }
                 .trend.stable { color: var(--text-muted); font-weight: 500; }
+                .trend-cell { display: flex; flex-direction: column; gap: 0.3rem; }
+                .sparkline { display: block; overflow: visible; }
+                .sparkline-zero { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 2; }
+                .sparkline-line { stroke-width: 1.5; }
+                .sparkline-line.worsening { stroke: var(--critical); }
+                .sparkline-line.improving { stroke: var(--good); }
+                .sparkline-line.stable { stroke: var(--text-muted); }
+                .sparkline-dot.worsening { fill: var(--critical); }
+                .sparkline-dot.improving { fill: var(--good); }
+                .sparkline-dot.stable { fill: var(--text-muted); }
                 .muted { color: var(--text-muted); font-style: italic; }
                 .limit-exceeded { color: var(--critical); font-weight: 700; }
                 .ch-status { font-weight: 600; }
@@ -715,6 +730,41 @@ public class DashboardController : ControllerBase
         Thanks,
         [Your name]
         """;
+
+    /// <summary>
+    /// Inline sparkline of DaysLate across a contact's paid-invoice history (oldest to newest).
+    /// Higher on the line = later payment, matching the "up is worse" reading of the trend arrow
+    /// beside it. A faint dashed zero-line marks on-time payment; the final point is emphasized
+    /// since it's the most recent data. Returns "" with fewer than 2 history points — nothing
+    /// meaningful to draw a trend from.
+    /// </summary>
+    private static string BuildSparkline(ContactPaymentTrend trend, string trendClass)
+    {
+        if (trend.History.Count < 2)
+            return "";
+
+        const double width = 70, height = 22, padX = 3, padY = 4;
+        var values = trend.History.Select(h => (double)h.DaysLate).ToList();
+        var minVal = Math.Min(values.Min(), 0);
+        var maxVal = Math.Max(values.Max(), 0);
+        if (maxVal - minVal < 1) maxVal = minVal + 1; // avoid a divide-by-zero when every value is identical
+
+        double XAt(int i) => padX + i / (double)(values.Count - 1) * (width - 2 * padX);
+        double YAt(double v) => padY + (maxVal - v) / (maxVal - minVal) * (height - 2 * padY);
+
+        var points = string.Join(" ", values.Select((v, i) => $"{XAt(i):0.#},{YAt(v):0.#}"));
+        var zeroY = YAt(0);
+        var lastX = XAt(values.Count - 1);
+        var lastY = YAt(values[^1]);
+
+        return $"""
+            <svg class="sparkline" viewBox="0 0 {width} {height}" width="{width}" height="{height}" aria-hidden="true">
+              <line x1="{padX}" y1="{zeroY:0.#}" x2="{width - padX}" y2="{zeroY:0.#}" class="sparkline-zero" />
+              <polyline points="{points}" class="sparkline-line {trendClass}" fill="none" />
+              <circle cx="{lastX:0.#}" cy="{lastY:0.#}" r="2.2" class="sparkline-dot {trendClass}" />
+            </svg>
+            """;
+    }
 
     /// <summary>
     /// Top 5 overdue contacts ranked by OverdueAmount × OldestOverdueDays — the money at stake,
