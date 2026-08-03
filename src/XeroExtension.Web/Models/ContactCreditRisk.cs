@@ -13,6 +13,9 @@ public class ContactCreditRisk
     public int OldestOverdueDays { get; set; }
     public CreditRiskLevel RiskLevel { get; set; }
 
+    /// <summary>Human-readable explanation of how RiskLevel was derived, in application order — mirrors ContactCreditScore.Reasons.</summary>
+    public List<string> Reasons { get; set; } = [];
+
     /// <summary>This contact's share (0-100) of the total outstanding receivables across all at-risk contacts.</summary>
     public decimal ConcentrationPercent { get; set; }
 

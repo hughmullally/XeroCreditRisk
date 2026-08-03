@@ -1,0 +1,62 @@
+Thanks for the questions — good ones. Summary below, more detail in the attached doc.
+
+QUICKBOOKS/SAGE VS XERO APIS
+
+Not equivalent, and it matters:
+
+- Xero: now a paid API as of March 2026 (was free) — free to 5 customer connections, ~£18/mo to 50, ~£127/mo to 1,000, ~£745/mo to 10,000, scaling predictably from there. Full webhook support, which my real-time dashboard updates depend on.
+- Sage: free API access, but tight limits (~2,500 requests/day) and no webhooks at all — I'd have to poll instead of getting pushed updates, which is a real engineering downgrade, not just a licensing difference.
+- QuickBooks: writes are free, but reads are metered — free to 500K reads/month, then paid tiers up to ~$4,500/mo at scale. Since my tool continuously polls invoices/payments, this is the one most likely to become a real ongoing cost line as I add customers — worth modelling against expected volume before committing engineering time.
+
+ROUTE TO MARKETS OUTSIDE THE UK
+
+Companies House is UK-only; there's no free equivalent elsewhere:
+
+- US: SEC EDGAR only covers public companies — private-company data is fragmented across 50 state registries with no consistent API.
+- Europe: national registries exist per-country but API quality varies a lot.
+- Asia: patchiest of all, rarely developer-friendly.
+
+No free government source solves this — I'd need a commercial provider. I've scoped a phased approach: pilot with Global Database first (bundles registry data + credit score in one API, cheaper, more developer-friendly), with Creditsafe as a secondary source for flagged high-risk cases only. Both need direct pricing quotes before I can commit — neither publishes API pricing.
+
+CRAWLING DIRECTOR HISTORY, LITIGATION, RED FLAGS
+
+This is the one area where I don't have solid research yet, so I don't want to overstate what I know. What I do know:
+
+- Companies House has a disqualified-officers search (UK only) and charges data (mortgages/debentures against a company) — both usable today, already in my current dashboard.
+- Creditsafe's reports include "negative information" (CCJs) as part of their standard credit report.
+- Full litigation history and director conviction screening beyond disqualification is a different category of data — closer to AML/KYC "adverse media" screening (think LexisNexis, Refinitiv World-Check, Moody's Orbis), which I flagged as likely overkill/over-cost for SME credit risk rather than compliance use cases, but haven't priced out. I can go research this specifically if it's a priority.
+
+CHASING TOOLS — PRICING TODAY
+
+- Chaser: £199/mo entry, up to £899/mo (plus custom above £100M revenue)
+- Satago: £45/mo entry, up to £200/mo
+- Paidnice: $69/mo entry, up to $999+/mo
+- Credit Hound: roughly $70–150/mo (conflicting sources, genuinely unclear)
+- Kolleno: roughly £650/user/mo entry, up to ~£1,245/user/mo
+- Upflow: free tier available, up to ~$880/mo
+
+Chaser and Satago are the closest competitors — same data sources I'm using (Companies House and Experian-style credit scoring respectively). I don't have trajectory/value-growth data (funding history, customer growth) — that's a different research task if useful.
+
+HOW DOES MY TOOL COMPARE TO THESE CHASERS, THOUGH?
+
+Important caveat first: it isn't actually a "chaser" today — no reminders, no SMS, no payment plans. Every tool above exists primarily to chase money; mine doesn't, yet. So the fair framing is "better risk intelligence that nothing else quite combines," which could sit alongside a chasing tool rather than replace one as it stands. Where it does genuinely differentiate:
+
+1. Score built from the org's own actual payment history with that specific customer — not a third-party bureau's generic view (Satago leans on Experian's score; mine reflects how this customer actually pays this business).
+2. Combines two signal types nothing else pairs the same way: self-computed payment-behaviour scoring and Companies House regulatory enrichment (insolvency, overdue filings, charges) in one view. Chaser uses Companies House too, but doesn't combine it with own-data scoring; the rest don't use Companies House at all.
+3. Native to Xero, not a bolt-on. Risk tiers sync back as real Xero Contact Groups, visible directly in Xero — no separate app to check. None of the others do this.
+4. Real-time, not batch. Webhook-driven — the dashboard reflects a new invoice or payment the moment it happens.
+5. Fully explainable — every score and recommended limit comes with a plain-language breakdown of why, not a black-box number.
+
+Bottom line: the honest pitch is "better risk detection and prioritisation, so a business (or a paired chasing tool) knows who to chase and how urgently" — not "does what Chaser does, better." Closing the action-layer gap is the biggest lever if I want to compete head-on rather than complement.
+
+"GROWN-UP" CREDIT RISK TOOLS, AND ARE THEY LICENSABLE OFF-THE-SHELF?
+
+Tools like RiskCubed (by CubeLogic) confirm this is a genuinely different category — built for tier-one banks, energy, and commodities trading firms to manage counterparty exposure limits, collateral, and derivative risk at institutional scale, not SME accounts-receivable risk. No public pricing (direct enterprise sales only), and there's no indication it's available white-labeled through Sage or similar — it looks like specialist in-house/direct-licensed infrastructure for large institutions, not a packaged product an SME accounting platform would resell. That's actually a useful signal for me: nothing at that "grown-up" tier appears to compete directly in my space — the real competitors are the SME-focused chasing tools I already mapped out, not RiskCubed-style institutional platforms.
+
+COST OF CREDIT RISK TO UK SMES
+
+Not yet researched on my end either. Happy to dig into this properly (Federation of Small Businesses, Bacs, and Xero's own research all publish late-payment/bad-debt cost figures for UK SMEs) rather than rely on Copilot's arm-waving. Can turn this around quickly if it's useful for the pitch.
+
+---
+
+Two things I haven't researched yet: litigation/director-conviction screening options, and UK SME cost-of-credit-risk statistics. Happy to dig into either before this goes out.

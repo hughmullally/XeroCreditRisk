@@ -169,6 +169,15 @@ public class DashboardController : ControllerBase
 
             var concentrationCell = $"""<span class="concentration {ConcentrationClass(r.ConcentrationPercent)}">{r.ConcentrationPercent:0.#}%</span>""";
 
+            var riskCell = $"""
+                <details class="risk-drilldown">
+                  <summary><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></summary>
+                  <ul>
+                    {string.Join("\n", r.Reasons.Select(reason => $"<li>{WebUtility.HtmlEncode(reason)}</li>"))}
+                  </ul>
+                </details>
+                """;
+
             var trendSortValue = trendByContact.TryGetValue(r.ContactId, out var trendForSort) ? trendForSort.AverageDaysLate.ToString() : "";
             var limitSortValue = recommendationByContact.TryGetValue(r.ContactId, out var recForSort) ? recForSort.RecommendedCreditLimit.ToString() : "";
             var chSortValue = CompaniesHouseSortRank(r);
@@ -193,7 +202,7 @@ public class DashboardController : ControllerBase
                   <td data-sort-value="{r.ConcentrationPercent}">{concentrationCell}</td>
                   <td data-sort-value="{r.OverdueAmount}">£{r.OverdueAmount:N2}</td>
                   <td data-sort-value="{r.OldestOverdueDays}">{r.OldestOverdueDays}</td>
-                  <td data-sort-value="{(int)r.RiskLevel}"><span class="badge {r.RiskLevel.ToString().ToLowerInvariant()}">{r.RiskLevel}</span></td>
+                  <td data-sort-value="{(int)r.RiskLevel}">{riskCell}</td>
                   <td data-sort-value="{trendSortValue}">{trendCell}</td>
                   <td data-sort-value="{limitSortValue}">{limitCell}</td>
                   <td data-sort-value="{chSortValue}">{chCell}</td>
@@ -208,90 +217,184 @@ public class DashboardController : ControllerBase
               <meta charset="utf-8" />
               <title>Credit Risk Dashboard</title>
               <style>
-                body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 2rem; background: #f7f7f8; color: #222; }
-                h1 { font-size: 1.4rem; }
-                table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-                th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid #eee; }
-                th { background: #fafafa; font-size: 0.8rem; text-transform: uppercase; color: #666; }
+                :root {
+                  color-scheme: light dark;
+                  --page: #eef1f5;
+                  --surface: #ffffff;
+                  --text-primary: #0b0b0b;
+                  --text-secondary: #52514e;
+                  --text-muted: #898781;
+                  --border: #e1e0d9;
+                  --accent: #13b5ea;
+                  --header-start: #0a4d75;
+                  --header-end: #13b5ea;
+                  --good: #0ca30c;
+                  --warning: #fab219;
+                  --serious: #ec835a;
+                  --critical: #d03b3b;
+                  --shadow: 0 4px 14px rgba(11,11,11,0.09), 0 1px 3px rgba(11,11,11,0.06);
+                  --highlight: #fff3b0;
+                }
+                @media (prefers-color-scheme: dark) {
+                  :root {
+                    --page: #0d0d0d;
+                    --surface: #1a1a19;
+                    --text-primary: #ffffff;
+                    --text-secondary: #c3c2b7;
+                    --text-muted: #898781;
+                    --border: #2c2c2a;
+                    --accent: #4bc8f5;
+                    --header-start: #062f47;
+                    --header-end: #0f7fa3;
+                    --shadow: 0 4px 14px rgba(0,0,0,0.5), 0 1px 3px rgba(0,0,0,0.35);
+                    --highlight: #4a3f0a;
+                  }
+                }
+                * { box-sizing: border-box; }
+                body {
+                  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+                  margin: 0;
+                  padding: 0;
+                  background: var(--page);
+                  color: var(--text-primary);
+                  line-height: 1.5;
+                  font-size: 15.5px;
+                }
+                .app-header {
+                  background: linear-gradient(135deg, var(--header-start), var(--header-end));
+                  padding: 1.6rem clamp(1rem, 3vw, 2.5rem);
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+                }
+                .app-header-inner {
+                  display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+                }
+                h1 { font-size: 1.9rem; font-weight: 800; margin: 0; letter-spacing: -0.01em; color: white; display: flex; align-items: center; gap: 0.6rem; }
+                .page-content { padding: 2rem clamp(1rem, 3vw, 2.5rem) 3.5rem; }
+                .table-card {
+                  background: var(--surface);
+                  border: 1px solid var(--border);
+                  border-radius: 12px;
+                  box-shadow: var(--shadow);
+                  overflow: auto;
+                }
+                table { border-collapse: collapse; width: 100%; min-width: 960px; }
+                th, td { text-align: left; padding: 0.85rem 1.15rem; border-bottom: 1px solid var(--border); }
+                td { color: var(--text-primary); font-size: 0.92rem; }
+                td:nth-child(3), td:nth-child(5), td:nth-child(6), td:nth-child(9) { font-variant-numeric: tabular-nums; }
+                th:nth-child(3), td:nth-child(3),
+                th:nth-child(5), td:nth-child(5),
+                th:nth-child(9), td:nth-child(9) { text-align: right; }
+                .score-drilldown ul, .limit-drilldown ul, .risk-drilldown ul { text-align: left; }
+                th {
+                  position: sticky; top: 0;
+                  background: var(--surface);
+                  font-size: 0.74rem; letter-spacing: 0.05em; text-transform: uppercase;
+                  color: var(--text-muted); font-weight: 700;
+                  border-bottom: 2px solid var(--border);
+                  white-space: nowrap;
+                }
                 th[data-col] { cursor: pointer; user-select: none; }
-                th[data-col]:hover { color: #222; }
-                .sort-indicator { display: inline-block; width: 1em; color: #13b5ea; }
-                a { color: #13b5ea; text-decoration: none; }
+                th[data-col]:hover { color: var(--accent); }
+                .sort-indicator { display: inline-block; width: 1em; color: var(--accent); }
+                tbody tr:hover td { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+                a { color: var(--accent); text-decoration: none; }
                 a:hover { text-decoration: underline; }
-                .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; color: white; }
-                .badge.high { background: #d64545; }
-                .badge.medium { background: #e0a030; }
-                .badge.low { background: #3ba55c; }
-                .badge.current { background: #6c757d; }
-                .score-badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; color: white; }
-                .score-badge.grade-a { background: #3ba55c; }
-                .score-badge.grade-b { background: #6cbf6c; }
-                .score-badge.grade-c { background: #e0a030; }
-                .score-badge.grade-d { background: #e0763a; }
-                .score-badge.grade-f { background: #d64545; }
-                .score-drilldown summary, .limit-drilldown summary { cursor: pointer; list-style: none; }
-                .score-drilldown summary::-webkit-details-marker, .limit-drilldown summary::-webkit-details-marker { display: none; }
-                .score-drilldown ul, .limit-drilldown ul { margin: 0.4rem 0 0; padding: 0 0 0 1.1rem; font-size: 0.75rem; color: #555; }
-                .score-drilldown li, .limit-drilldown li { margin: 0.1rem 0; }
+                .badge, .score-badge {
+                  display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.8rem; border-radius: 999px;
+                  font-size: 0.76rem; font-weight: 800; color: white; letter-spacing: 0.03em; text-transform: uppercase;
+                }
+                .badge::before { content: "●"; font-size: 0.6rem; }
+                .badge.high { background: var(--critical); }
+                .badge.medium { background: var(--serious); }
+                .badge.low { background: var(--warning); color: #3d2c00; }
+                .badge.current { background: var(--good); }
+                .score-badge.grade-a { background: var(--good); }
+                .score-badge.grade-b { background: var(--good); opacity: 0.82; }
+                .score-badge.grade-c { background: var(--warning); color: #3d2c00; }
+                .score-badge.grade-d { background: var(--serious); }
+                .score-badge.grade-f { background: var(--critical); }
+                .score-drilldown summary, .limit-drilldown summary, .risk-drilldown summary { cursor: pointer; list-style: none; }
+                .score-drilldown summary::-webkit-details-marker, .limit-drilldown summary::-webkit-details-marker, .risk-drilldown summary::-webkit-details-marker { display: none; }
+                .score-drilldown ul, .limit-drilldown ul, .risk-drilldown ul { margin: 0.4rem 0 0; padding: 0 0 0 1.1rem; font-size: 0.75rem; color: var(--text-secondary); }
+                .score-drilldown li, .limit-drilldown li, .risk-drilldown li { margin: 0.15rem 0; }
                 .trend { font-weight: 600; }
-                .trend.worsening { color: #d64545; }
-                .trend.improving { color: #3ba55c; }
-                .trend.stable { color: #888; }
-                .muted { color: #999; font-style: italic; }
-                .limit-exceeded { color: #d64545; font-weight: 600; }
+                .trend.worsening { color: var(--critical); }
+                .trend.improving { color: var(--good); }
+                .trend.stable { color: var(--text-muted); font-weight: 500; }
+                .muted { color: var(--text-muted); font-style: italic; }
+                .limit-exceeded { color: var(--critical); font-weight: 700; }
                 .ch-status { font-weight: 600; }
-                .ch-status.distressed { color: #d64545; }
-                .ch-status.overdue-filings { color: #e0a030; }
-                .ch-status.healthy { color: #3ba55c; }
-                .ch-meta { font-size: 0.75rem; color: #888; margin-top: 0.15rem; }
-                .ch-meta.warn { color: #e0a030; }
+                .ch-status.distressed { color: var(--critical); }
+                .ch-status.overdue-filings { color: var(--serious); }
+                .ch-status.healthy { color: var(--good); }
+                .ch-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; }
+                .ch-meta.warn { color: var(--serious); }
                 .concentration { font-weight: 600; }
-                .concentration.high { color: #d64545; }
-                .concentration.medium { color: #e0a030; }
-                .concentration.low { color: #888; font-weight: normal; }
-                .warnings { background: #fff8e6; border-left: 4px solid #e0a030; border-radius: 4px; padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; }
-                .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; display: flex; align-items: center; justify-content: space-between; }
-                .warnings-toggle-btn { background: none; border: 1px solid #e0a030; color: #a6720f; border-radius: 4px; padding: 0.15rem 0.6rem; font-size: 0.75rem; cursor: pointer; }
-                .warnings-toggle-btn:hover { background: #f5deb0; }
+                .concentration.high { color: var(--critical); }
+                .concentration.medium { color: var(--serious); }
+                .concentration.low { color: var(--text-muted); font-weight: 500; }
+                .warnings {
+                  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+                  border: 1px solid var(--border); border-left: 5px solid var(--warning);
+                  border-radius: 12px; padding: 1.1rem 1.5rem; margin-bottom: 1.75rem;
+                  box-shadow: var(--shadow);
+                }
+                .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; display: flex; align-items: center; justify-content: space-between; color: var(--text-primary); }
+                .warnings-toggle-btn {
+                  background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
+                  border-radius: 6px; padding: 0.2rem 0.7rem; font-size: 0.75rem; cursor: pointer; font-weight: 600;
+                }
+                .warnings-toggle-btn:hover { border-color: var(--warning); color: var(--text-primary); }
                 .warnings ul { margin: 0.3rem 0 0.6rem 1.2rem; padding: 0; }
-                .warnings li { margin: 0.2rem 0; }
+                .warnings li { margin: 0.2rem 0; color: var(--text-secondary); }
                 .warnings-list { column-count: 2; column-gap: 2rem; }
                 .warnings details { margin: 0.3rem 0; break-inside: avoid; }
-                .warnings summary { cursor: pointer; font-weight: 600; padding: 0.2rem 0; }
+                .warnings summary { cursor: pointer; font-weight: 600; padding: 0.2rem 0; color: var(--text-primary); }
                 .warnings summary a { font-weight: 600; }
-                .warning-count { background: #e0a030; color: white; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.75rem; margin-left: 0.4rem; }
-                .group-toggle { margin-bottom: 0.6rem; font-size: 0.85rem; }
+                .warning-count { background: var(--warning); color: #3d2c00; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.75rem; margin-left: 0.4rem; font-weight: 700; }
+                .group-toggle { margin-bottom: 0.6rem; font-size: 0.85rem; color: var(--text-secondary); }
                 .group-toggle label { margin-right: 1.2rem; cursor: pointer; }
-                .live-status { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; vertical-align: middle; }
-                .live-status.connecting { background: #eee; color: #888; }
-                .live-status.live { background: #e6f7ec; color: #3ba55c; }
-                .live-status.disconnected { background: #fbe7e7; color: #d64545; }
+                .live-status {
+                  font-size: 0.72rem; font-weight: 700; padding: 0.3rem 0.75rem; border-radius: 999px;
+                  vertical-align: middle; letter-spacing: 0.03em;
+                  background: rgba(255,255,255,0.16); color: white; border: 1px solid rgba(255,255,255,0.3);
+                }
                 tbody tr { transition: background-color 1s ease; }
-                tbody tr.highlight-updated { background-color: #fff3b0; }
+                tbody tr.highlight-updated { background-color: var(--highlight); }
+                tbody tr.highlight-updated td { background: var(--highlight); }
               </style>
             </head>
             <body>
-              <h1>Credit Risk Dashboard <span id="liveStatus" class="live-status connecting">connecting…</span></h1>
+              <header class="app-header">
+                <div class="app-header-inner">
+                  <h1>📊 Credit Risk Dashboard</h1>
+                  <span id="liveStatus" class="live-status connecting">connecting…</span>
+                </div>
+              </header>
+              <main class="page-content">
               {{warningsSection}}
-              <table>
-                <thead>
-                  <tr>
-                    <th data-col="0">Contact<span class="sort-indicator"></span></th>
-                    <th data-col="1">Score<span class="sort-indicator"></span></th>
-                    <th data-col="2">Outstanding<span class="sort-indicator"></span></th>
-                    <th data-col="3">Concentration<span class="sort-indicator"></span></th>
-                    <th data-col="4">Overdue<span class="sort-indicator"></span></th>
-                    <th data-col="5">Oldest Overdue (days)<span class="sort-indicator"></span></th>
-                    <th data-col="6">Risk<span class="sort-indicator"></span></th>
-                    <th data-col="7">Payment Trend<span class="sort-indicator"></span></th>
-                    <th data-col="8">Recommended Limit<span class="sort-indicator"></span></th>
-                    <th data-col="9">Companies House<span class="sort-indicator"></span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {{rows}}
-                </tbody>
-              </table>
+              <div class="table-card">
+                <table>
+                  <thead>
+                    <tr>
+                      <th data-col="0">Contact<span class="sort-indicator"></span></th>
+                      <th data-col="1">Score<span class="sort-indicator"></span></th>
+                      <th data-col="2">Outstanding<span class="sort-indicator"></span></th>
+                      <th data-col="3">Concentration<span class="sort-indicator"></span></th>
+                      <th data-col="4">Overdue<span class="sort-indicator"></span></th>
+                      <th data-col="5">Oldest Overdue (days)<span class="sort-indicator"></span></th>
+                      <th data-col="6">Risk<span class="sort-indicator"></span></th>
+                      <th data-col="7">Payment Trend<span class="sort-indicator"></span></th>
+                      <th data-col="8">Recommended Limit<span class="sort-indicator"></span></th>
+                      <th data-col="9">Companies House<span class="sort-indicator"></span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {{rows}}
+                  </tbody>
+                </table>
+              </div>
+              </main>
 
               <script>
                 // Apply any highlight requested by the reload that just happened, then keep the

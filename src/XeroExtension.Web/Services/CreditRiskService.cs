@@ -83,11 +83,30 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                         _ => CreditRiskLevel.Low
                     };
 
+                var reasons = new List<string>();
+                reasons.Add(overdue.Count == 0
+                    ? "No overdue invoices — Current."
+                    : $"Oldest overdue invoice: {oldestOverdueDays} days.");
+                if (overdue.Count > 0)
+                {
+                    reasons.Add(oldestOverdueDays switch
+                    {
+                        >= 60 => "60+ days overdue → High.",
+                        >= 30 => "30–59 days overdue → Medium.",
+                        _ => "Under 30 days overdue → Low."
+                    });
+                }
+
                 var companyNumber = g.Key.HasValue && companyNumberByContact.TryGetValue(g.Key.Value, out var cn) ? cn : null;
                 var profile = companyNumber is not null && profileByCompanyNumber.TryGetValue(companyNumber, out var p) ? p : null;
 
                 if (profile?.IsDistressed == true)
+                {
+                    reasons.Add(riskLevel == CreditRiskLevel.High
+                        ? $"Companies House also reports this company as distressed (status: \"{profile.Status}\")."
+                        : $"Escalated to High — Companies House reports this company as distressed (status: \"{profile.Status}\"), overriding the invoice-based {riskLevel} level.");
                     riskLevel = CreditRiskLevel.High;
+                }
 
                 return new ContactCreditRisk
                 {
@@ -99,6 +118,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     OverdueAmount = overdue.Sum(i => i.AmountDue ?? 0),
                     OldestOverdueDays = oldestOverdueDays,
                     RiskLevel = riskLevel,
+                    Reasons = reasons,
                     CompanyNumber = companyNumber,
                     CompaniesHouseStatus = profile?.Status,
                     CompaniesHouseDistressed = profile?.IsDistressed ?? false,
