@@ -33,7 +33,8 @@ public class CompaniesHouseService(HttpClient httpClient, ILogger<CompaniesHouse
                 AccountsOverdue = dto.Accounts?.Overdue ?? false,
                 ConfirmationStatementOverdue = dto.ConfirmationStatement?.Overdue ?? false,
                 HasInsolvencyHistory = dto.Links?.Insolvency is not null,
-                HasCharges = dto.Links?.Charges is not null
+                HasCharges = dto.Links?.Charges is not null,
+                SicCodes = dto.SicCodes ?? []
             };
         }
         catch (Exception ex)
@@ -52,6 +53,7 @@ public class CompaniesHouseService(HttpClient httpClient, ILogger<CompaniesHouse
         [JsonPropertyName("accounts")] public AccountsDto? Accounts { get; set; }
         [JsonPropertyName("confirmation_statement")] public ConfirmationStatementDto? ConfirmationStatement { get; set; }
         [JsonPropertyName("links")] public LinksDto? Links { get; set; }
+        [JsonPropertyName("sic_codes")] public List<string>? SicCodes { get; set; }
     }
 
     private class LinksDto

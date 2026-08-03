@@ -130,6 +130,7 @@ public class DashboardController : ControllerBase
                 <button id="warningsToggle" class="warnings-toggle-btn">▼ Collapse</button>
               </h2>
               <div id="warningsContent">
+                <p class="warnings-subhead">Money tied up in overdue invoices isn't available to reinvest — UK research found businesses affected by late payment forgo an average of ~3% of annual turnover in foregone investment (London Economics/GOV.UK, 2025).</p>
                 <div class="group-toggle">
                   <label><input type="radio" name="groupBy" value="contact" checked /> By Counterparty</label>
                   <label><input type="radio" name="groupBy" value="type" /> By Warning Type</label>
@@ -176,6 +177,7 @@ public class DashboardController : ControllerBase
                         {(r.CompanyIncorporationDate is { } inc ? $"""<div class="ch-meta">Est. {inc:yyyy} ({(int)((DateTime.UtcNow - inc).TotalDays / 365.25)}y)</div>""" : "")}
                         {(r.CompaniesHouseHasInsolvencyHistory ? """<div class="ch-meta warn">⚠ Prior insolvency</div>""" : "")}
                         {(r.CompaniesHouseHasCharges ? """<div class="ch-meta">🔒 Has registered charges</div>""" : "")}
+                        {(r.CompaniesHouseSector is { } sector ? $"""<div class="ch-meta{(r.CompaniesHouseHigherRiskSector ? " warn" : "")}">{WebUtility.HtmlEncode(sector)}{(r.CompaniesHouseHigherRiskSector ? " ⚠ higher late-payment sector" : "")}</div>""" : "")}
                         """;
 
             var concentrationCell = $"""<span class="concentration {ConcentrationClass(r.ConcentrationPercent)}">{r.ConcentrationPercent:0.#}%</span>""";
@@ -430,6 +432,7 @@ public class DashboardController : ControllerBase
                   box-shadow: var(--shadow);
                 }
                 .warnings h2 { font-size: 1rem; margin: 0 0 0.4rem; display: flex; align-items: center; justify-content: space-between; color: var(--text-primary); }
+                .warnings-subhead { font-size: 0.78rem; color: var(--text-muted); margin: 0 0 0.7rem; line-height: 1.4; }
                 .warnings-toggle-btn {
                   background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
                   border-radius: 6px; padding: 0.2rem 0.7rem; font-size: 0.75rem; cursor: pointer; font-weight: 600;

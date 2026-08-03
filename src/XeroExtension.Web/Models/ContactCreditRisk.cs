@@ -27,4 +27,10 @@ public class ContactCreditRisk
     public DateTime? CompanyIncorporationDate { get; set; }
     public bool CompaniesHouseHasInsolvencyHistory { get; set; }
     public bool CompaniesHouseHasCharges { get; set; }
+
+    /// <summary>Broad sector from the company's primary SIC code, or null if no company number/SIC data on file.</summary>
+    public string? CompaniesHouseSector { get; set; }
+
+    /// <summary>Sectors UK research found have disproportionately higher late-payment rates — see CompanyProfile.IsHigherRiskSector.</summary>
+    public bool CompaniesHouseHigherRiskSector { get; set; }
 }

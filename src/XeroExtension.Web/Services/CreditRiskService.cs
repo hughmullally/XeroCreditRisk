@@ -125,7 +125,9 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     CompaniesHouseOverdueFilings = profile is { AccountsOverdue: true } or { ConfirmationStatementOverdue: true },
                     CompanyIncorporationDate = profile?.IncorporationDate,
                     CompaniesHouseHasInsolvencyHistory = profile?.HasInsolvencyHistory ?? false,
-                    CompaniesHouseHasCharges = profile?.HasCharges ?? false
+                    CompaniesHouseHasCharges = profile?.HasCharges ?? false,
+                    CompaniesHouseSector = profile?.PrimarySector,
+                    CompaniesHouseHigherRiskSector = profile?.IsHigherRiskSector ?? false
                 };
             })
             .ToList();
@@ -290,7 +292,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                     ContactId = r.ContactId,
                     ContactName = r.ContactName,
                     Type = EarlyWarningType.ConcentrationRisk,
-                    Message = $"Accounts for {r.ConcentrationPercent:0.#}% of total outstanding receivables — a large share to have riding on one contact."
+                    Message = $"Accounts for {r.ConcentrationPercent:0.#}% of total outstanding receivables — that much cash tied up in one contact is cash not available to reinvest in growth if it goes unpaid."
                 });
             }
         }
@@ -333,7 +335,7 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
                 ContactId = rec.ContactId,
                 ContactName = rec.ContactName,
                 Type = EarlyWarningType.ExceedsRecommendedLimit,
-                Message = $"Currently owes £{rec.CurrentOutstanding:N2}, above the recommended £{rec.RecommendedCreditLimit:N2} limit."
+                Message = $"Currently owes £{rec.CurrentOutstanding:N2}, above the recommended £{rec.RecommendedCreditLimit:N2} limit — money that could otherwise be reinvested if it were paid."
             });
         }
 
