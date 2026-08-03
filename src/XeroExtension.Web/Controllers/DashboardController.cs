@@ -395,17 +395,18 @@ public class DashboardController : ControllerBase
                   padding: 1.1rem 1.5rem; box-shadow: var(--shadow);
                 }
                 .chart-card h2 { font-size: 1rem; margin: 0 0 0.9rem; color: var(--text-primary); }
-                .segbar-track {
-                  display: flex; width: 100%; height: 1.4rem; border-radius: 4px; overflow: hidden;
-                  gap: 2px; background: var(--page);
+                .bar-chart { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+                .bar-row {
+                  display: grid; grid-template-columns: 6.5rem 1fr auto; align-items: center; gap: 0.7rem;
                 }
-                .segbar-seg { height: 100%; }
-                .segbar-legend { list-style: none; margin: 0.9rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-                .segbar-legend li { display: flex; align-items: center; gap: 0.55rem; font-size: 0.82rem; }
-                .segbar-dot { width: 0.65rem; height: 0.65rem; border-radius: 999px; flex-shrink: 0; }
-                .segbar-legend-label { flex: 1; color: var(--text-primary); font-weight: 600; }
-                .segbar-legend-value { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-                .segbar-legend-pct { font-variant-numeric: tabular-nums; color: var(--text-muted); width: 3rem; text-align: right; }
+                .bar-row-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+                .bar-track { background: var(--page); border-radius: 4px; height: 1rem; overflow: hidden; }
+                .bar-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+                .bar-row-value {
+                  font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--text-secondary);
+                  text-align: right; white-space: nowrap;
+                }
+                .bar-row-pct { color: var(--text-muted); }
                 .warnings-benchmark {
                   font-size: 0.85rem; font-weight: 600; color: var(--critical);
                   background: color-mix(in srgb, var(--critical) 12%, transparent);
@@ -827,7 +828,7 @@ public class DashboardController : ControllerBase
         var agedSegments = agedDebtors
             .Select((b, i) => (b.Label, b.Amount, Color: AgedDebtorColors[i % AgedDebtorColors.Length]))
             .ToList();
-        var agedChart = BuildSegmentedBarChart("Aged debtors", agedSegments, agedSegments.Sum(s => s.Amount));
+        var agedChart = BuildBarChart("Aged debtors", agedSegments, agedSegments.Sum(s => s.Amount));
 
         var riskSegments = new[] { CreditRiskLevel.Current, CreditRiskLevel.Low, CreditRiskLevel.Medium, CreditRiskLevel.High }
             .Select(level => (
@@ -841,7 +842,7 @@ public class DashboardController : ControllerBase
                     _ => "var(--critical)"
                 }))
             .ToList();
-        var riskChart = BuildSegmentedBarChart("Risk segments", riskSegments, riskSegments.Sum(s => s.Amount));
+        var riskChart = BuildBarChart("Risk segments", riskSegments, riskSegments.Sum(s => s.Amount));
 
         return $"""
             <div class="charts-row">
@@ -851,27 +852,24 @@ public class DashboardController : ControllerBase
             """;
     }
 
-    private static string BuildSegmentedBarChart(string title, List<(string Label, decimal Amount, string Color)> segments, decimal total)
+    private static string BuildBarChart(string title, List<(string Label, decimal Amount, string Color)> segments, decimal total)
     {
         if (total <= 0) return "";
 
-        var segsHtml = string.Join("\n", segments
-            .Where(s => s.Amount > 0)
-            .Select(s =>
-            {
-                var pct = Math.Round(s.Amount / total * 100, 1);
-                return $"""<div class="segbar-seg" style="width:{pct:0.##}%; background:{s.Color};" title="{WebUtility.HtmlEncode(s.Label)}: £{s.Amount:N0} ({pct:0.#}%)"></div>""";
-            }));
+        var max = segments.Max(s => s.Amount);
+        if (max <= 0) return "";
 
-        var legendHtml = string.Join("\n", segments.Select(s =>
+        var rowsHtml = string.Join("\n", segments.Select(s =>
         {
             var pct = Math.Round(s.Amount / total * 100, 1);
+            var barPct = Math.Round(s.Amount / max * 100, 1);
             return $"""
-                <li>
-                  <span class="segbar-dot" style="background:{s.Color};"></span>
-                  <span class="segbar-legend-label">{WebUtility.HtmlEncode(s.Label)}</span>
-                  <span class="segbar-legend-value">£{s.Amount:N0}</span>
-                  <span class="segbar-legend-pct">{pct:0.#}%</span>
+                <li class="bar-row">
+                  <span class="bar-row-label">{WebUtility.HtmlEncode(s.Label)}</span>
+                  <span class="bar-track" title="{WebUtility.HtmlEncode(s.Label)}: £{s.Amount:N0} ({pct:0.#}%)">
+                    <span class="bar-fill" style="width:{barPct:0.##}%; background:{s.Color};"></span>
+                  </span>
+                  <span class="bar-row-value">£{s.Amount:N0} <span class="bar-row-pct">({pct:0.#}%)</span></span>
                 </li>
                 """;
         }));
@@ -879,11 +877,8 @@ public class DashboardController : ControllerBase
         return $"""
             <div class="chart-card">
               <h2>{WebUtility.HtmlEncode(title)}</h2>
-              <div class="segbar-track">
-                {segsHtml}
-              </div>
-              <ul class="segbar-legend">
-                {legendHtml}
+              <ul class="bar-chart">
+                {rowsHtml}
               </ul>
             </div>
             """;
