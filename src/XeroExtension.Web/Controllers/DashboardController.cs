@@ -386,11 +386,11 @@ public class DashboardController : ControllerBase
                   font-size: 1rem; margin: 0; display: flex; align-items: center; justify-content: space-between;
                   gap: 1rem; flex-wrap: wrap; color: var(--text-primary);
                 }
-                .chase-first h2 button {
-                  background: var(--accent); color: white; border: none; border-radius: 6px;
-                  padding: 0.4rem 0.85rem; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+                .chase-toggle-btn {
+                  background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary);
+                  border-radius: 6px; padding: 0.2rem 0.7rem; font-size: 0.75rem; cursor: pointer; font-weight: 600;
                 }
-                .chase-first h2 button:hover { opacity: 0.9; }
+                .chase-toggle-btn:hover { border-color: var(--accent); color: var(--text-primary); }
                 .chase-subhead { font-size: 0.8rem; color: var(--text-muted); margin: 0.3rem 0 0.9rem; }
                 .chase-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
                 .chase-link {
@@ -552,12 +552,6 @@ public class DashboardController : ControllerBase
                   });
                 });
 
-                document.getElementById('prepareAllReminders')?.addEventListener('click', (e) => {
-                  document.querySelectorAll('.reminder-drilldown').forEach(d => d.open = true);
-                  document.querySelector('.reminder-drilldown')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  e.target.textContent = 'Drafts expanded below ↓';
-                });
-
                 // Chase First list: jump to the contact's row, open their reminder draft, and
                 // briefly highlight the row so it's obvious which one just got scrolled to.
                 document.querySelectorAll('.chase-link').forEach(btn => {
@@ -590,6 +584,25 @@ public class DashboardController : ControllerBase
 
                   warningsToggle.addEventListener('click', () => {
                     setCollapsed(warningsContent.style.display !== 'none');
+                  });
+                }
+
+                // Chase First defaults to expanded (unlike Warnings) since it's meant to be
+                // immediately actionable — only collapses if the user explicitly chooses to.
+                const chaseFirstToggle = document.getElementById('chaseFirstToggle');
+                if (chaseFirstToggle) {
+                  const chaseFirstContent = document.getElementById('chaseFirstContent');
+
+                  const setChaseCollapsed = (collapsed) => {
+                    chaseFirstContent.style.display = collapsed ? 'none' : '';
+                    chaseFirstToggle.textContent = collapsed ? '▶ Expand' : '▼ Collapse';
+                    sessionStorage.setItem('chaseFirstCollapsed', collapsed ? '1' : '0');
+                  };
+
+                  setChaseCollapsed(sessionStorage.getItem('chaseFirstCollapsed') === '1');
+
+                  chaseFirstToggle.addEventListener('click', () => {
+                    setChaseCollapsed(chaseFirstContent.style.display !== 'none');
                   });
                 }
 
@@ -712,7 +725,7 @@ public class DashboardController : ControllerBase
               <button type="button" class="chase-link" data-contact-id="{r.ContactId}">
                 <span class="chase-rank">{i + 1}</span>
                 <span class="chase-name">{WebUtility.HtmlEncode(r.ContactName)}</span>
-                <span class="chase-meta">£{r.OverdueAmount:N2} overdue · {r.OldestOverdueDays} day{(r.OldestOverdueDays == 1 ? "" : "s")}</span>
+                <span class="chase-meta">£{r.OverdueAmount:N2} overdue across {r.OverdueInvoiceCount} invoice{(r.OverdueInvoiceCount == 1 ? "" : "s")} · {r.OldestOverdueDays} day{(r.OldestOverdueDays == 1 ? "" : "s")}</span>
               </button>
             </li>
             """));
@@ -724,13 +737,15 @@ public class DashboardController : ControllerBase
             <div class="chase-first">
               <h2>
                 🎯 Chase First
-                <button type="button" id="prepareAllReminders">✉ Prepare all reminder drafts</button>
+                <button id="chaseFirstToggle" class="chase-toggle-btn">▼ Collapse</button>
               </h2>
-              <p class="chase-subhead">Ranked by overdue amount × days overdue — the money at stake, weighted by urgency.</p>
-              <ol class="chase-list">
-                {items}
-              </ol>
-              {moreNote}
+              <div id="chaseFirstContent">
+                <p class="chase-subhead">Ranked by overdue amount × days overdue — the money at stake, weighted by urgency.</p>
+                <ol class="chase-list">
+                  {items}
+                </ol>
+                {moreNote}
+              </div>
             </div>
             """;
     }
