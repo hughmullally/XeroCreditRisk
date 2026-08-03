@@ -33,4 +33,10 @@ public interface ICreditRiskService
     /// sortable number rather than several separate badges.
     /// </summary>
     Task<List<ContactCreditScore>> GetCreditScoresAsync(string tenantId);
+
+    /// <summary>
+    /// Buckets every outstanding sales invoice by age (not yet due, 1-30, 31-60, 61-90, 90+ days
+    /// overdue), summing amount and invoice count per bucket — the classic "aged debtors" report.
+    /// </summary>
+    Task<List<AgedDebtorBucket>> GetAgedDebtorsAsync(string tenantId);
 }

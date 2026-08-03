@@ -414,4 +414,41 @@ public class CreditRiskService(IXeroService xeroService, ICompaniesHouseService 
         .OrderBy(s => s.Score)
         .ToList();
     }
+
+    public async Task<List<AgedDebtorBucket>> GetAgedDebtorsAsync(string tenantId)
+    {
+        var invoices = await GetInvoicesCachedAsync(tenantId);
+        var now = DateTime.UtcNow;
+
+        var outstanding = invoices.Where(i =>
+            i.Type == Invoice.TypeEnum.ACCREC &&
+            i.Status == Invoice.StatusEnum.AUTHORISED &&
+            i.AmountDue > 0);
+
+        var buckets = new List<AgedDebtorBucket>
+        {
+            new() { Label = "Not yet due" },
+            new() { Label = "1-30 days" },
+            new() { Label = "31-60 days" },
+            new() { Label = "61-90 days" },
+            new() { Label = "90+ days" }
+        };
+
+        foreach (var invoice in outstanding)
+        {
+            var daysOverdue = invoice.DueDate is { } due ? (int)(now - due).TotalDays : 0;
+            var bucket = daysOverdue switch
+            {
+                <= 0 => buckets[0],
+                <= 30 => buckets[1],
+                <= 60 => buckets[2],
+                <= 90 => buckets[3],
+                _ => buckets[4]
+            };
+            bucket.Amount += invoice.AmountDue ?? 0;
+            bucket.InvoiceCount++;
+        }
+
+        return buckets;
+    }
 }

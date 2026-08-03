@@ -77,9 +77,11 @@ public class DashboardController : ControllerBase
         var warnings = await _creditRiskService.GetEarlyWarningsAsync(tenantId);
         var scores = await _creditRiskService.GetCreditScoresAsync(tenantId);
         var scoreByContact = scores.ToDictionary(s => s.ContactId);
+        var agedDebtors = await _creditRiskService.GetAgedDebtorsAsync(tenantId);
 
         var totalOutstandingInvoices = risk.Sum(r => r.OutstandingInvoiceCount);
         var totalOverdueInvoices = risk.Sum(r => r.OverdueInvoiceCount);
+        var chartsSection = totalOutstandingInvoices == 0 ? "" : BuildChartsSection(agedDebtors, risk);
         var benchmarkSection = totalOutstandingInvoices == 0 ? "" : BuildBenchmarkSection(totalOverdueInvoices, totalOutstandingInvoices);
 
         var chaseFirst = risk
@@ -378,6 +380,26 @@ public class DashboardController : ControllerBase
                 .concentration.high { color: var(--critical); }
                 .concentration.medium { color: var(--serious); }
                 .concentration.low { color: var(--text-muted); font-weight: 500; }
+                .charts-row {
+                  display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.75rem;
+                }
+                @media (max-width: 720px) { .charts-row { grid-template-columns: 1fr; } }
+                .chart-card {
+                  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                  padding: 1.1rem 1.5rem; box-shadow: var(--shadow);
+                }
+                .chart-card h2 { font-size: 1rem; margin: 0 0 0.9rem; color: var(--text-primary); }
+                .segbar-track {
+                  display: flex; width: 100%; height: 1.4rem; border-radius: 4px; overflow: hidden;
+                  gap: 2px; background: var(--page);
+                }
+                .segbar-seg { height: 100%; }
+                .segbar-legend { list-style: none; margin: 0.9rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+                .segbar-legend li { display: flex; align-items: center; gap: 0.55rem; font-size: 0.82rem; }
+                .segbar-dot { width: 0.65rem; height: 0.65rem; border-radius: 999px; flex-shrink: 0; }
+                .segbar-legend-label { flex: 1; color: var(--text-primary); font-weight: 600; }
+                .segbar-legend-value { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+                .segbar-legend-pct { font-variant-numeric: tabular-nums; color: var(--text-muted); width: 3rem; text-align: right; }
                 .benchmark {
                   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
                   padding: 1.1rem 1.5rem; margin-bottom: 1.75rem; box-shadow: var(--shadow);
@@ -480,6 +502,7 @@ public class DashboardController : ControllerBase
                 </div>
               </header>
               <main class="page-content">
+              {{chartsSection}}
               {{benchmarkSection}}
               {{chaseFirstSection}}
               {{warningsSection}}
@@ -799,6 +822,75 @@ public class DashboardController : ControllerBase
                 </ol>
                 {moreNote}
               </div>
+            </div>
+            """;
+    }
+
+    private static readonly string[] AgedDebtorColors = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#184f95"];
+
+    private static string BuildChartsSection(List<AgedDebtorBucket> agedDebtors, List<ContactCreditRisk> risk)
+    {
+        var agedSegments = agedDebtors
+            .Select((b, i) => (b.Label, b.Amount, Color: AgedDebtorColors[i % AgedDebtorColors.Length]))
+            .ToList();
+        var agedChart = BuildSegmentedBarChart("Aged debtors", agedSegments, agedSegments.Sum(s => s.Amount));
+
+        var riskSegments = new[] { CreditRiskLevel.Current, CreditRiskLevel.Low, CreditRiskLevel.Medium, CreditRiskLevel.High }
+            .Select(level => (
+                Label: level.ToString(),
+                Amount: risk.Where(r => r.RiskLevel == level).Sum(r => r.OutstandingAmount),
+                Color: level switch
+                {
+                    CreditRiskLevel.Current => "var(--good)",
+                    CreditRiskLevel.Low => "var(--warning)",
+                    CreditRiskLevel.Medium => "var(--serious)",
+                    _ => "var(--critical)"
+                }))
+            .ToList();
+        var riskChart = BuildSegmentedBarChart("Risk segments", riskSegments, riskSegments.Sum(s => s.Amount));
+
+        return $"""
+            <div class="charts-row">
+              {agedChart}
+              {riskChart}
+            </div>
+            """;
+    }
+
+    private static string BuildSegmentedBarChart(string title, List<(string Label, decimal Amount, string Color)> segments, decimal total)
+    {
+        if (total <= 0) return "";
+
+        var segsHtml = string.Join("\n", segments
+            .Where(s => s.Amount > 0)
+            .Select(s =>
+            {
+                var pct = Math.Round(s.Amount / total * 100, 1);
+                return $"""<div class="segbar-seg" style="width:{pct:0.##}%; background:{s.Color};" title="{WebUtility.HtmlEncode(s.Label)}: £{s.Amount:N0} ({pct:0.#}%)"></div>""";
+            }));
+
+        var legendHtml = string.Join("\n", segments.Select(s =>
+        {
+            var pct = Math.Round(s.Amount / total * 100, 1);
+            return $"""
+                <li>
+                  <span class="segbar-dot" style="background:{s.Color};"></span>
+                  <span class="segbar-legend-label">{WebUtility.HtmlEncode(s.Label)}</span>
+                  <span class="segbar-legend-value">£{s.Amount:N0}</span>
+                  <span class="segbar-legend-pct">{pct:0.#}%</span>
+                </li>
+                """;
+        }));
+
+        return $"""
+            <div class="chart-card">
+              <h2>{WebUtility.HtmlEncode(title)}</h2>
+              <div class="segbar-track">
+                {segsHtml}
+              </div>
+              <ul class="segbar-legend">
+                {legendHtml}
+              </ul>
             </div>
             """;
     }
