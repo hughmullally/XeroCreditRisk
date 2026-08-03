@@ -82,6 +82,14 @@ public class DashboardController : ControllerBase
         var totalOverdueInvoices = risk.Sum(r => r.OverdueInvoiceCount);
         var benchmarkSection = totalOutstandingInvoices == 0 ? "" : BuildBenchmarkSection(totalOverdueInvoices, totalOutstandingInvoices);
 
+        var overdueContactCount = risk.Count(r => r.OverdueAmount > 0);
+        var reminderBarSection = overdueContactCount == 0 ? "" : $"""
+            <div class="reminder-bar">
+              <span>{overdueContactCount} counterpart{(overdueContactCount == 1 ? "y has" : "ies have")} overdue invoices.</span>
+              <button type="button" id="prepareAllReminders">✉ Prepare all reminder drafts</button>
+            </div>
+            """;
+
         var warningsByContact = warnings
             .GroupBy(w => new { w.ContactId, w.ContactName })
             .OrderByDescending(g => g.Count())
@@ -182,6 +190,22 @@ public class DashboardController : ControllerBase
                 </details>
                 """;
 
+            var reminderCell = r.OverdueAmount <= 0
+                ? """<span class="muted">—</span>"""
+                : $"""
+                    <details class="reminder-drilldown">
+                      <summary><span class="badge reminder-badge">✉ Draft</span></summary>
+                      <div class="reminder-draft">
+                        <label>Subject</label>
+                        <input type="text" readonly onclick="this.select()" value="{WebUtility.HtmlEncode(ReminderSubject(r))}" />
+                        <label>Body</label>
+                        <textarea readonly rows="6" onclick="this.select()">{WebUtility.HtmlEncode(ReminderBody(r))}</textarea>
+                        <button type="button" class="copy-btn">Copy</button>
+                      </div>
+                    </details>
+                    """;
+            var reminderSortValue = r.OverdueAmount > 0 ? "1" : "0";
+
             var trendSortValue = trendByContact.TryGetValue(r.ContactId, out var trendForSort) ? trendForSort.AverageDaysLate.ToString() : "";
             var limitSortValue = recommendationByContact.TryGetValue(r.ContactId, out var recForSort) ? recForSort.RecommendedCreditLimit.ToString() : "";
             var chSortValue = CompaniesHouseSortRank(r);
@@ -210,6 +234,7 @@ public class DashboardController : ControllerBase
                   <td data-sort-value="{trendSortValue}">{trendCell}</td>
                   <td data-sort-value="{limitSortValue}">{limitCell}</td>
                   <td data-sort-value="{chSortValue}">{chCell}</td>
+                  <td data-sort-value="{reminderSortValue}">{reminderCell}</td>
                 </tr>
                 """;
         }));
@@ -317,8 +342,8 @@ public class DashboardController : ControllerBase
                 .score-badge.grade-c { background: var(--warning); color: #3d2c00; }
                 .score-badge.grade-d { background: var(--serious); }
                 .score-badge.grade-f { background: var(--critical); }
-                .score-drilldown summary, .limit-drilldown summary, .risk-drilldown summary { cursor: pointer; list-style: none; }
-                .score-drilldown summary::-webkit-details-marker, .limit-drilldown summary::-webkit-details-marker, .risk-drilldown summary::-webkit-details-marker { display: none; }
+                .score-drilldown summary, .limit-drilldown summary, .risk-drilldown summary, .reminder-drilldown summary { cursor: pointer; list-style: none; }
+                .score-drilldown summary::-webkit-details-marker, .limit-drilldown summary::-webkit-details-marker, .risk-drilldown summary::-webkit-details-marker, .reminder-drilldown summary::-webkit-details-marker { display: none; }
                 .score-drilldown ul, .limit-drilldown ul, .risk-drilldown ul { margin: 0.4rem 0 0; padding: 0 0 0 1.1rem; font-size: 0.75rem; color: var(--text-secondary); }
                 .score-drilldown li, .limit-drilldown li, .risk-drilldown li { margin: 0.15rem 0; }
                 .trend { font-weight: 600; }
@@ -354,6 +379,33 @@ public class DashboardController : ControllerBase
                 .benchmark-verdict.critical { color: var(--critical); }
                 .benchmark-verdict.muted { color: var(--text-muted); }
                 .benchmark-source { font-size: 0.72rem; color: var(--text-muted); width: 100%; }
+                .reminder-bar {
+                  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+                  background: var(--accent-tint, color-mix(in srgb, var(--accent) 8%, var(--surface)));
+                  border: 1px solid var(--border); border-radius: 10px;
+                  padding: 0.7rem 1.2rem; margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--text-secondary);
+                }
+                .reminder-bar button {
+                  background: var(--accent); color: white; border: none; border-radius: 6px;
+                  padding: 0.45rem 0.9rem; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+                }
+                .reminder-bar button:hover { opacity: 0.9; }
+                .reminder-badge { background: var(--accent); }
+                .reminder-draft {
+                  display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem;
+                  width: min(360px, 80vw);
+                }
+                .reminder-draft label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; }
+                .reminder-draft input, .reminder-draft textarea {
+                  font-family: inherit; font-size: 0.78rem; color: var(--text-primary);
+                  background: var(--page); border: 1px solid var(--border); border-radius: 6px;
+                  padding: 0.4rem 0.6rem; resize: vertical;
+                }
+                .copy-btn {
+                  align-self: flex-start; background: var(--accent); color: white; border: none;
+                  border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.75rem; font-weight: 700; cursor: pointer;
+                }
+                .copy-btn:hover { opacity: 0.9; }
                 .warnings {
                   background: color-mix(in srgb, var(--warning) 12%, var(--surface));
                   border: 1px solid var(--border); border-left: 5px solid var(--warning);
@@ -394,6 +446,7 @@ public class DashboardController : ControllerBase
               </header>
               <main class="page-content">
               {{benchmarkSection}}
+              {{reminderBarSection}}
               {{warningsSection}}
               <div class="table-card">
                 <table>
@@ -409,6 +462,7 @@ public class DashboardController : ControllerBase
                       <th data-col="7">Payment Trend<span class="sort-indicator"></span></th>
                       <th data-col="8">Recommended Limit<span class="sort-indicator"></span></th>
                       <th data-col="9">Companies House<span class="sort-indicator"></span></th>
+                      <th data-col="10">Reminder<span class="sort-indicator"></span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -467,6 +521,24 @@ public class DashboardController : ControllerBase
                     document.getElementById('warningsByContact').style.display = e.target.value === 'contact' ? '' : 'none';
                     document.getElementById('warningsByType').style.display = e.target.value === 'type' ? '' : 'none';
                   });
+                });
+
+                // Reminder drafts are generated server-side but never sent — copy-to-clipboard only.
+                document.querySelectorAll('.copy-btn').forEach(btn => {
+                  btn.addEventListener('click', () => {
+                    const textarea = btn.closest('.reminder-draft').querySelector('textarea');
+                    navigator.clipboard.writeText(textarea.value).then(() => {
+                      const original = btn.textContent;
+                      btn.textContent = 'Copied!';
+                      setTimeout(() => { btn.textContent = original; }, 1500);
+                    });
+                  });
+                });
+
+                document.getElementById('prepareAllReminders')?.addEventListener('click', (e) => {
+                  document.querySelectorAll('.reminder-drilldown').forEach(d => d.open = true);
+                  document.querySelector('.reminder-drilldown')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  e.target.textContent = 'Drafts expanded below ↓';
                 });
 
                 // Collapse state survives the frequent auto-reloads (sessionStorage), so toggling it
@@ -578,6 +650,24 @@ public class DashboardController : ControllerBase
         EarlyWarningType.ConcentrationRisk => "Concentration Risk",
         _ => type.ToString()
     };
+
+    /// <summary>
+    /// Drafts only — never sent. The Reminder column gives the user a pre-filled email to copy and
+    /// send themselves; there's no outbound email integration in this app.
+    /// </summary>
+    private static string ReminderSubject(ContactCreditRisk r) =>
+        $"Payment reminder: {r.OverdueInvoiceCount} overdue invoice{(r.OverdueInvoiceCount == 1 ? "" : "s")} — {r.ContactName}";
+
+    private static string ReminderBody(ContactCreditRisk r) => $"""
+        Hi {r.ContactName},
+
+        This is a friendly reminder that you currently have £{r.OverdueAmount:N2} overdue across {r.OverdueInvoiceCount} invoice{(r.OverdueInvoiceCount == 1 ? "" : "s")}, with the oldest now {r.OldestOverdueDays} day{(r.OldestOverdueDays == 1 ? "" : "s")} past due.
+
+        Could you let us know when we can expect payment, or get in touch if there's anything we should be aware of?
+
+        Thanks,
+        [Your name]
+        """;
 
     /// <summary>UK SME invoices currently overdue, per Sage/CEBR analysis of 1.2M+ real invoices (2026) — see docs/uk-sme-late-payment-cost-research.md.</summary>
     private const decimal NationalOverdueInvoicePercent = 49m;
