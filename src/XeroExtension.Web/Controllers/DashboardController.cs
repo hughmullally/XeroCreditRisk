@@ -82,13 +82,12 @@ public class DashboardController : ControllerBase
         var totalOverdueInvoices = risk.Sum(r => r.OverdueInvoiceCount);
         var benchmarkSection = totalOutstandingInvoices == 0 ? "" : BuildBenchmarkSection(totalOverdueInvoices, totalOutstandingInvoices);
 
-        var overdueContactCount = risk.Count(r => r.OverdueAmount > 0);
-        var reminderBarSection = overdueContactCount == 0 ? "" : $"""
-            <div class="reminder-bar">
-              <span>{overdueContactCount} counterpart{(overdueContactCount == 1 ? "y has" : "ies have")} overdue invoices.</span>
-              <button type="button" id="prepareAllReminders">✉ Prepare all reminder drafts</button>
-            </div>
-            """;
+        var chaseFirst = risk
+            .Where(r => r.OverdueAmount > 0)
+            .OrderByDescending(r => r.OverdueAmount * r.OldestOverdueDays)
+            .Take(5)
+            .ToList();
+        var chaseFirstSection = chaseFirst.Count == 0 ? "" : BuildChaseFirstSection(chaseFirst, risk.Count(r => r.OverdueAmount > 0));
 
         var warningsByContact = warnings
             .GroupBy(w => new { w.ContactId, w.ContactName })
@@ -379,17 +378,35 @@ public class DashboardController : ControllerBase
                 .benchmark-verdict.critical { color: var(--critical); }
                 .benchmark-verdict.muted { color: var(--text-muted); }
                 .benchmark-source { font-size: 0.72rem; color: var(--text-muted); width: 100%; }
-                .reminder-bar {
-                  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-                  background: var(--accent-tint, color-mix(in srgb, var(--accent) 8%, var(--surface)));
-                  border: 1px solid var(--border); border-radius: 10px;
-                  padding: 0.7rem 1.2rem; margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--text-secondary);
+                .chase-first {
+                  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                  padding: 1.1rem 1.5rem; margin-bottom: 1.75rem; box-shadow: var(--shadow);
                 }
-                .reminder-bar button {
+                .chase-first h2 {
+                  font-size: 1rem; margin: 0; display: flex; align-items: center; justify-content: space-between;
+                  gap: 1rem; flex-wrap: wrap; color: var(--text-primary);
+                }
+                .chase-first h2 button {
                   background: var(--accent); color: white; border: none; border-radius: 6px;
-                  padding: 0.45rem 0.9rem; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+                  padding: 0.4rem 0.85rem; font-size: 0.78rem; font-weight: 700; cursor: pointer;
                 }
-                .reminder-bar button:hover { opacity: 0.9; }
+                .chase-first h2 button:hover { opacity: 0.9; }
+                .chase-subhead { font-size: 0.8rem; color: var(--text-muted); margin: 0.3rem 0 0.9rem; }
+                .chase-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+                .chase-link {
+                  width: 100%; display: flex; align-items: center; gap: 0.8rem;
+                  background: var(--page); border: 1px solid var(--border); border-radius: 8px;
+                  padding: 0.55rem 0.9rem; cursor: pointer; font-family: inherit; text-align: left;
+                }
+                .chase-link:hover { border-color: var(--accent); }
+                .chase-rank {
+                  flex-shrink: 0; width: 1.6rem; height: 1.6rem; border-radius: 999px;
+                  background: var(--accent); color: white; font-size: 0.78rem; font-weight: 800;
+                  display: flex; align-items: center; justify-content: center;
+                }
+                .chase-name { flex: 1; font-weight: 600; color: var(--text-primary); font-size: 0.88rem; }
+                .chase-meta { flex-shrink: 0; font-size: 0.78rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+                .chase-more { font-size: 0.78rem; color: var(--text-muted); margin: 0.6rem 0 0; }
                 .reminder-badge { background: var(--accent); }
                 .reminder-draft {
                   display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.5rem;
@@ -446,7 +463,7 @@ public class DashboardController : ControllerBase
               </header>
               <main class="page-content">
               {{benchmarkSection}}
-              {{reminderBarSection}}
+              {{chaseFirstSection}}
               {{warningsSection}}
               <div class="table-card">
                 <table>
@@ -539,6 +556,20 @@ public class DashboardController : ControllerBase
                   document.querySelectorAll('.reminder-drilldown').forEach(d => d.open = true);
                   document.querySelector('.reminder-drilldown')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   e.target.textContent = 'Drafts expanded below ↓';
+                });
+
+                // Chase First list: jump to the contact's row, open their reminder draft, and
+                // briefly highlight the row so it's obvious which one just got scrolled to.
+                document.querySelectorAll('.chase-link').forEach(btn => {
+                  btn.addEventListener('click', () => {
+                    const row = document.querySelector(`tr[data-contact-id="${btn.dataset.contactId}"]`);
+                    if (!row) return;
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('highlight-updated');
+                    setTimeout(() => row.classList.remove('highlight-updated'), 2000);
+                    const reminder = row.querySelector('.reminder-drilldown');
+                    if (reminder) reminder.open = true;
+                  });
                 });
 
                 // Collapse state survives the frequent auto-reloads (sessionStorage), so toggling it
@@ -668,6 +699,41 @@ public class DashboardController : ControllerBase
         Thanks,
         [Your name]
         """;
+
+    /// <summary>
+    /// Top 5 overdue contacts ranked by OverdueAmount × OldestOverdueDays — the money at stake,
+    /// weighted by urgency. Deliberately a simple, explainable product rather than a blended score
+    /// mixing £ amounts with the 0–100 credit score on incompatible scales.
+    /// </summary>
+    private static string BuildChaseFirstSection(List<ContactCreditRisk> chaseFirst, int overdueContactCount)
+    {
+        var items = string.Join("\n", chaseFirst.Select((r, i) => $"""
+            <li>
+              <button type="button" class="chase-link" data-contact-id="{r.ContactId}">
+                <span class="chase-rank">{i + 1}</span>
+                <span class="chase-name">{WebUtility.HtmlEncode(r.ContactName)}</span>
+                <span class="chase-meta">£{r.OverdueAmount:N2} overdue · {r.OldestOverdueDays} day{(r.OldestOverdueDays == 1 ? "" : "s")}</span>
+              </button>
+            </li>
+            """));
+
+        var moreCount = overdueContactCount - chaseFirst.Count;
+        var moreNote = moreCount <= 0 ? "" : $"""<p class="chase-more">+ {moreCount} more overdue counterpart{(moreCount == 1 ? "y" : "ies")} in the table below.</p>""";
+
+        return $"""
+            <div class="chase-first">
+              <h2>
+                🎯 Chase First
+                <button type="button" id="prepareAllReminders">✉ Prepare all reminder drafts</button>
+              </h2>
+              <p class="chase-subhead">Ranked by overdue amount × days overdue — the money at stake, weighted by urgency.</p>
+              <ol class="chase-list">
+                {items}
+              </ol>
+              {moreNote}
+            </div>
+            """;
+    }
 
     /// <summary>UK SME invoices currently overdue, per Sage/CEBR analysis of 1.2M+ real invoices (2026) — see docs/uk-sme-late-payment-cost-research.md.</summary>
     private const decimal NationalOverdueInvoicePercent = 49m;
