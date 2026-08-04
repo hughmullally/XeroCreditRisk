@@ -61,6 +61,10 @@ public class HomeController : ControllerBase
                   <h2>🏗 Architecture</h2>
                   <p>How the system is built and how the pieces fit together.</p>
                 </a>
+                <a class="card" href="/demo-script">
+                  <h2>🎬 Demo Script</h2>
+                  <p>A walkthrough script for presenting the dashboard.</p>
+                </a>
               </div>
             </body>
             </html>
@@ -74,6 +78,9 @@ public class HomeController : ControllerBase
 
     [HttpGet("architecture")]
     public ContentResult Architecture() => DocPage("Architecture", "ARCHITECTURE.md");
+
+    [HttpGet("demo-script")]
+    public ContentResult DemoScript() => DocPage("Demo Script", "DEMO_SCRIPT.md");
 
     private static ContentResult DocPage(string title, string fileName)
     {

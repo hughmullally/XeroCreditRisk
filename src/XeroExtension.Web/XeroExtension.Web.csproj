@@ -20,6 +20,7 @@
   <ItemGroup>
     <Content Include="..\..\docs\OVERVIEW.md" Link="Docs\OVERVIEW.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\docs\ARCHITECTURE.md" Link="Docs\ARCHITECTURE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\DEMO_SCRIPT.md" Link="Docs\DEMO_SCRIPT.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
